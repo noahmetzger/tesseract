@@ -75,10 +75,32 @@ struct IntSimdMatrix {
   // u is of size W.dim2() - 1 and the output v is of size W.dim1().
   // u is imagined to have an extra element at the end with value 1, to
   // implement the bias, but it doesn't actually have it.
-  // Computes the base C++ implementation.
+  // Computes the base C++ implementation, if there are no partial_funcs_.
+  // NOTE: The size of the input vector (u) must be padded using
+  // RoundInputs above.
+  // The input will be over-read to the extent of the padding. There are no
+  // alignment requirements.
   static void MatrixDotVector(const GENERIC_2D_ARRAY<int8_t>& w,
-                              const GenericVector<double>& scales, const int8_t* u,
+                       const GenericVector<double>& scales, const int8_t* u,
+                       double* v);
+
+  void MatrixDotVectorFloat(const GENERIC_2D_ARRAY<int8_t>& w,
+                       const GenericVector<double>& scales, const int8_t* u,
+                       float* v) const;
+
+  // Function to compute part of a matrix.vector multiplication. The weights
+  // are in a very specific order (see above) in w, which is multiplied by
+  // u of length num_in, to produce output v after scaling the integer results
+  // by the corresponding member of scales.
+  // The amount of w and scales consumed is fixed and not available to the
+  // caller. The number of outputs written to v will be at most num_out.
+  typedef void (*PartialFunc)(const int8_t* w, const double* scales,
+                              const int8_t* u, int num_in, int num_out,
                               double* v);
+
+  typedef void (*PartialFuncFloat)(const int8_t* w, const double* scales,
+                              const int8_t* u, int num_in, int num_out,
+                              float* v);
 
   // Rounds the input up to a multiple of the given factor.
   static int Roundup(int input, int factor) {
@@ -112,6 +134,7 @@ struct IntSimdMatrix {
   static const IntSimdMatrix* intSimdMatrix;
   static const IntSimdMatrix intSimdMatrixAVX2;
   static const IntSimdMatrix intSimdMatrixSSE;
+  std::vector<PartialFuncFloat> partial_funcs_float_;
 };
 
 }  // namespace tesseract

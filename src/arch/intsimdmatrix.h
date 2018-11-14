@@ -80,6 +80,10 @@ struct IntSimdMatrix {
                               const GenericVector<double>& scales, const int8_t* u,
                               double* v);
 
+  typedef void (*PartialFuncFloat)(const int8_t* w, const double* scales,
+                              const int8_t* u, int num_in, int num_out,
+                              float* v);
+
   // Rounds the input up to a multiple of the given factor.
   static int Roundup(int input, int factor) {
     return (input + factor - 1) / factor * factor;
@@ -112,6 +116,7 @@ struct IntSimdMatrix {
   static const IntSimdMatrix* intSimdMatrix;
   static const IntSimdMatrix intSimdMatrixAVX2;
   static const IntSimdMatrix intSimdMatrixSSE;
+  std::vector<PartialFuncFloat> partial_funcs_float_;
 };
 
 }  // namespace tesseract

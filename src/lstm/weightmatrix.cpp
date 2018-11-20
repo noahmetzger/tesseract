@@ -35,6 +35,8 @@ static inline double log2(double n) {
 const int kAdamCorrectionIterations = 200000;
 // Epsilon in Adam to prevent division by zero.
 const double kAdamEpsilon = 1e-8;
+// Function Pointer for the Dotproduct function, depending on available hardware
+WeightMatrix::DP_float_ptr WeightMatrix::DP_ptr;
 
 // Computes matrix.vector v = Wu.
 // u is of size W.dim2() - add_bias_fwd and the output v is of size
@@ -407,10 +409,38 @@ void WeightMatrix::Debug2D(const char* msg) {
 
 // Computes and returns the dot product of the two n-vectors u and v.
 /* static */
-float WeightMatrix::DotProductFloat(const float* u, const float* v, int n) {
-  float total = 0.0;
+double WeightMatrix::DotProduct(const double* u, const double* v, int n) {
+  // Note: because the order of addition is different among the 3 DotProduct
+  // functions, the results can (and do) vary slightly (although they agree
+  // to within about 4e-15). This produces different results when running
+  // training, despite all random inputs being precisely equal.
+  // To get consistent results, use just one of these DotProduct functions.
+  // On a test multi-layer network, serial is 57% slower than sse, and avx
+  // is about 8% faster than sse. This suggests that the time is memory
+  // bandwidth constrained and could benefit from holding the reused vector
+  // in AVX registers.
+  if (SIMDDetect::IsAVXAvailable()) return DotProductAVX(u, v, n);
+  if (SIMDDetect::IsSSEAvailable()) return DotProductSSE(u, v, n);
+  double total = 0.0;
   for (int k = 0; k < n; ++k) total += u[k] * v[k];
   return total;
+}
+
+//Assigns the appropriate method for the dot product to the function pointer
+void WeightMatrix::assign_DP_mode() {
+  if (SIMDDetect::IsAVXAvailable()) {
+    WeightMatrix::DP_ptr = &DotProductAVXFloat;
+  } else if (SIMDDetect::IsSSEAvailable()) {
+    WeightMatrix::DP_ptr = &DotProductStandardFloat;
+  } else {
+    WeightMatrix::DP_ptr = &DotProductStandardFloat;
+  }
+}
+
+// Computes and returns the dot product of the two n-vectors u and v.
+/* static */
+float WeightMatrix::DotProductFloat(const float* u, const float* v, int n) {
+  return WeightMatrix::DP_ptr(u, v, n);
 }
 
 // Utility function converts an array of float to the corresponding array
@@ -428,6 +458,8 @@ void WeightMatrix::FloatToDouble(const GENERIC_2D_ARRAY<float>& wf,
   }
 }
 
+// Utility function converts an array of double to the corresponding array
+// of float.
 void WeightMatrix::DoubleToFloat(GENERIC_2D_ARRAY<double>& wf,
                                  GENERIC_2D_ARRAY<float>* wd) {
   int dim1 = wf.dim1();
@@ -438,6 +470,13 @@ void WeightMatrix::DoubleToFloat(GENERIC_2D_ARRAY<double>& wf,
     float* wdi = (*wd)[i];
     for (int j = 0; j < dim2; ++j) wdi[j] = static_cast<float>(wfi[j]);
   }
+}
+
+// Dot product calculation used when AVX and SSE are not availlable
+float WeightMatrix::DotProductStandardFloat(const float* u, const float* v, int n) {
+  float total = 0.0;
+  for (int k = 0; k < n; ++k) total += u[k] * v[k];
+  return total;
 }
 
 // Computes matrix.vector v = Wu.

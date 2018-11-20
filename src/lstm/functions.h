@@ -35,9 +35,12 @@ namespace tesseract {
 const int kTableSize = 4096;
 // Scale factor for float arg to int index.
 const double kScaleFactor = 256.0;
+const float kScaleFactor_f = 256.0;
 
 extern double TanhTable[];
+extern float TanhTable_f[];
 extern double LogisticTable[];
+extern float LogisticTable_f[];
 
 // Non-linearity (sigmoid) functions with cache tables and clipping.
 inline double Tanh(double x) {
@@ -56,6 +59,24 @@ inline double Tanh(double x) {
   }
   double offset = x - index;
   return TanhTable[index] * (1.0 - offset) + TanhTable[index + 1] * offset;
+}
+
+inline float Tanh(float x) {
+  if (x < 0.0) return -Tanh(-x);
+  if (x >= (kTableSize - 1) / kScaleFactor_f) return 1.0;
+  x *= kScaleFactor_f;
+  int index = static_cast<int>(std::floor(x));
+  if (TanhTable_f[index] == 0.0 && index > 0) {
+    // Generate the entry.
+    TanhTable_f[index] = std::tanh(index / kScaleFactor_f);
+  }
+  if (index == kTableSize - 1) return TanhTable_f[kTableSize - 1];
+  if (TanhTable_f[index + 1] == 0.0) {
+    // Generate the entry.
+    TanhTable_f[index + 1] = std::tanh((index + 1) / kScaleFactor_f);
+  }
+  float offset = x - index;
+  return TanhTable_f[index] * (1.0 - offset) + TanhTable_f[index + 1] * offset;
 }
 
 inline double Logistic(double x) {
@@ -77,9 +98,29 @@ inline double Logistic(double x) {
          LogisticTable[index + 1] * offset;
 }
 
+inline float Logistic(float x) {
+  if (x < 0.0) return 1.0 - Logistic(-x);
+  if (x >= (kTableSize - 1) / kScaleFactor_f) return 1.0;
+  x *= kScaleFactor_f;
+  int index = static_cast<int>(std::floor(x));
+  if (LogisticTable_f[index] == 0.0) {
+    // Generate the entry.
+    LogisticTable_f[index] = 1.0 / (1.0 + std::exp(-index / kScaleFactor_f));
+  }
+  if (index == kTableSize - 1) return LogisticTable_f[kTableSize - 1];
+  if (LogisticTable_f[index + 1] == 0.0) {
+    // Generate the entry.
+    LogisticTable_f[index + 1] = 1.0 / (1.0 + std::exp(-(index + 1) / kScaleFactor_f));
+  }
+  float offset = x - index;
+  return LogisticTable_f[index] * (1.0 - offset) +
+         LogisticTable_f[index + 1] * offset;
+}
+
 // Non-linearity (sigmoid) functions and their derivatives.
 struct FFunc {
   inline double operator()(double x) const { return Logistic(x); }
+  inline float operator()(float x) const { return Logistic(x); }
 };
 struct FPrime {
   inline double operator()(double y) const { return y * (1.0 - y); }
@@ -107,6 +148,7 @@ struct ReluPrime {
 };
 struct GFunc {
   inline double operator()(double x) const { return Tanh(x); }
+  inline float operator()(float x) const { return Tanh(x); }
 };
 struct GPrime {
   inline double operator()(double y) const { return 1.0 - y * y; }
@@ -125,6 +167,7 @@ struct ClipGPrime {
 };
 struct HFunc {
   inline double operator()(double x) const { return Tanh(x); }
+  inline float operator()(float x) const { return Tanh(x); }
 };
 struct HPrime {
   inline double operator()(double y) const {

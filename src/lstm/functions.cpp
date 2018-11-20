@@ -21,6 +21,8 @@
 namespace tesseract {
 
 double TanhTable[kTableSize];
+float TanhTable_f[kTableSize];
 double LogisticTable[kTableSize];
+float LogisticTable_f[kTableSize];
 
 }  // namespace tesseract.

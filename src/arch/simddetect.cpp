@@ -48,6 +48,7 @@ namespace tesseract {
 // bandwidth constrained and could benefit from holding the reused vector
 // in AVX registers.
 DotProductFunction DotProduct;
+DotProductFloatFunction DotProductFloat;
 
 static STRING_VAR(dotproduct, "auto",
                   "Function used for calculation of dot product");
@@ -74,6 +75,10 @@ static void SetDotProduct(DotProductFunction f, const IntSimdMatrix* m = nullptr
   IntSimdMatrix::intSimdMatrix = m;
 }
 
+static void SetDotProductFloat(DotProductFloatFunction function) {
+  DotProductFloat = function;
+}
+
 // Constructor.
 // Tests the architecture in a system-dependent way to detect AVX, SSE and
 // any other available SIMD equipment.
@@ -82,6 +87,7 @@ static void SetDotProduct(DotProductFunction f, const IntSimdMatrix* m = nullptr
 SIMDDetect::SIMDDetect() {
   // The fallback is a generic dot product calculation.
   SetDotProduct(DotProductGeneric);
+  SetDotProductFloat(DotProductFloatGeneric);
 
 #if defined(HAS_CPUID)
 #if defined(__GNUC__)
@@ -134,11 +140,13 @@ SIMDDetect::SIMDDetect() {
   } else if (avx_available_) {
     // AVX detected.
     SetDotProduct(DotProductAVX, &IntSimdMatrix::intSimdMatrixSSE);
+    SetDotProductFloat(DotProductFloatAVX);
 #endif
 #if defined(SSE4_1)
   } else if (sse_available_) {
     // SSE detected.
     SetDotProduct(DotProductSSE, &IntSimdMatrix::intSimdMatrixSSE);
+    SetDotProductFloat(DotProductFloatSSE);
 #endif
   }
 }
@@ -152,10 +160,12 @@ void SIMDDetect::Update() {
   } else if (!strcmp(dotproduct.string(), "generic")) {
     // Generic code selected by config variable.
     SetDotProduct(DotProductGeneric);
+    SetDotProductFloat(DotProductFloatGeneric);
     dotproduct_method = "generic";
   } else if (!strcmp(dotproduct.string(), "native")) {
     // Native optimized code selected by config variable.
     SetDotProduct(DotProductNative);
+    SetDotProductFloat(DotProductFloatNative);
     dotproduct_method = "native";
 #if defined(AVX2)
   } else if (!strcmp(dotproduct.string(), "avx2")) {
@@ -167,12 +177,14 @@ void SIMDDetect::Update() {
   } else if (!strcmp(dotproduct.string(), "avx")) {
     // AVX selected by config variable.
     SetDotProduct(DotProductAVX, &IntSimdMatrix::intSimdMatrixSSE);
+    SetDotProductFloat(DotProductFloatAVX);
     dotproduct_method = "avx";
 #endif
 #if defined(SSE4_1)
   } else if (!strcmp(dotproduct.string(), "sse")) {
     // SSE selected by config variable.
     SetDotProduct(DotProductSSE, &IntSimdMatrix::intSimdMatrixSSE);
+    SetDotProductFloat(DotProductFloatSSE);
     dotproduct_method = "sse";
 #endif
   } else {

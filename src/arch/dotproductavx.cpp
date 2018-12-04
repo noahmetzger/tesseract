@@ -100,7 +100,7 @@ double DotProductAVX(const double* u, const double* v, int n) {
   return result;
 }
 
-float DotProductAVXFloat(const float* u, const float* v, int n) {
+float DotProductFloatAVX(const float* u, const float* v, int n) {
   if (n == 0) return 0.0f;
   __m256 sum1, c1, sum2, c2, sum3, c3, sum4, c4;
   sum1 = _mm256_set1_ps(0.0);

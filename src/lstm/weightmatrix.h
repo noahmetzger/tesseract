@@ -153,9 +153,6 @@ class WeightMatrix {
 
   void Debug2D(const char* msg);
 
-  static float DotProductFloat(const float* u, const float* v, int n);
-  // Utility function converts an array of float to the corresponding array
-  // of double.
   static void FloatToDouble(const GENERIC_2D_ARRAY<float>& wf,
                             GENERIC_2D_ARRAY<double>* wd);
 
@@ -164,14 +161,6 @@ class WeightMatrix {
 
   // Dot product calculation used when AVX and SSE are not availlable
   static float DotProductStandardFloat(const float* u, const float* v, int n);
-
-  //Function pointer for the Dotproduct distinguishing between AVX, SSE, and 
-  //standard calculation
-  typedef float (*DP_float_ptr)(const float*, const float*, int);
-  static DP_float_ptr DP_ptr;
-
-  // Assigns the appropriate method for the dot product to the function pointer
-  static void assign_DP_mode();
 
  private:
   // Computes matrix.vector v = Wu.

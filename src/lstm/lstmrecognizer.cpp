@@ -38,7 +38,6 @@
 #include "scrollview.h"
 #include "statistc.h"
 #include "tprintf.h"
-#include "weightmatrix.h"
 
 namespace tesseract {
 
@@ -69,7 +68,6 @@ LSTMRecognizer::~LSTMRecognizer() {
 // Loads a model from mgr, including the dictionary only if lang is not null.
 bool LSTMRecognizer::Load(const char* lang, TessdataManager* mgr) {
   TFile fp;
-  WeightMatrix::assign_DP_mode();
   if (!mgr->GetComponent(TESSDATA_LSTM, &fp)) return false;
   if (!DeSerialize(mgr, &fp)) return false;
   if (lang == nullptr) return true;

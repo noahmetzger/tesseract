@@ -14,6 +14,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Copyright (c) 2017, RRZE-HPC Erlangen
+// https://github.com/RRZE-HPC/DDOT-Bench/blob/master/LICENSE
 ///////////////////////////////////////////////////////////////////////
 
 #if !defined(__AVX__)
@@ -23,9 +26,6 @@
 #include <immintrin.h>
 #include <cstdint>
 #include "dotproductavx.h"
-#include <stdio.h>
-#include <math.h>
-#include <omp.h>
 
 namespace tesseract {
 
@@ -100,6 +100,7 @@ double DotProductAVX(const double* u, const double* v, int n) {
   return result;
 }
 
+// Code from: https://github.com/RRZE-HPC/DDOT-Bench
 float DotProductFloatAVX(const float* u, const float* v, int n) {
   if (n == 0) return 0.0f;
   __m256 sum1, c1, sum2, c2, sum3, c3, sum4, c4;

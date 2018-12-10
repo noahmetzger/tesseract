@@ -503,12 +503,12 @@ void LSTM::ForwardFloat(bool debug, const NetworkIO& input,
     // Setup the padded input in source.
     source_.CopyTimeStepGeneral(t, 0, ni_, input, t, 0);
     if (softmax_ != nullptr) {
-      source_.WriteTimeStepPartFloat(t, ni_, nf_, softmax_output);
+      source_.WriteTimeStepPart(t, ni_, nf_, softmax_output);
     }
-    source_.WriteTimeStepPartFloat(t, ni_ + nf_, ns_, curr_output);
+    source_.WriteTimeStepPart(t, ni_ + nf_, ns_, curr_output);
     if (Is2D())
-      source_.WriteTimeStepPartFloat(t, ni_ + nf_ + ns_, ns_, outputs[mod_t]);
-    if (!source_.int_mode()) source_.ReadTimeStepFloat(t, curr_input);
+      source_.WriteTimeStepPart(t, ni_ + nf_ + ns_, ns_, outputs[mod_t]);
+    if (!source_.int_mode()) source_.ReadTimeStep(t, curr_input);
     // Matrix multiply the inputs with the source.
     PARALLEL_IF_OPENMP(GFS)
     // It looks inefficient to create the threads on each t iteration, but the
@@ -516,47 +516,47 @@ void LSTM::ForwardFloat(bool debug, const NetworkIO& input,
     // the t-loop and then tasks in place of the sections is a *lot* slower.
     // Cell inputs.
     if (source_.int_mode())
-      gate_weights_[CI].MatrixDotVectorFloat(source_.i(t), temp_lines[CI]);
+      gate_weights_[CI].MatrixDotVector(source_.i(t), temp_lines[CI]);
     else
-      gate_weights_[CI].MatrixDotVectorFloat(curr_input, temp_lines[CI]);
-    FuncInplaceFloat<GFunc>(ns_, temp_lines[CI]);
+      gate_weights_[CI].MatrixDotVector(curr_input, temp_lines[CI]);
+    FuncInplace<GFunc>(ns_, temp_lines[CI]);
 
     SECTION_IF_OPENMP
     // Input Gates.
     if (source_.int_mode())
-      gate_weights_[GI].MatrixDotVectorFloat(source_.i(t), temp_lines[GI]);
+      gate_weights_[GI].MatrixDotVector(source_.i(t), temp_lines[GI]);
     else
-      gate_weights_[GI].MatrixDotVectorFloat(curr_input, temp_lines[GI]);
-    FuncInplaceFloat<FFunc>(ns_, temp_lines[GI]);
+      gate_weights_[GI].MatrixDotVector(curr_input, temp_lines[GI]);
+    FuncInplace<FFunc>(ns_, temp_lines[GI]);
 
     SECTION_IF_OPENMP
     // 1-D forget gates.
     if (source_.int_mode())
-      gate_weights_[GF1].MatrixDotVectorFloat(source_.i(t), temp_lines[GF1]);
+      gate_weights_[GF1].MatrixDotVector(source_.i(t), temp_lines[GF1]);
     else
-      gate_weights_[GF1].MatrixDotVectorFloat(curr_input, temp_lines[GF1]);
-    FuncInplaceFloat<FFunc>(ns_, temp_lines[GF1]);
+      gate_weights_[GF1].MatrixDotVector(curr_input, temp_lines[GF1]);
+    FuncInplace<FFunc>(ns_, temp_lines[GF1]);
 
     // 2-D forget gates.
     if (Is2D()) {
       if (source_.int_mode())
-        gate_weights_[GFS].MatrixDotVectorFloat(source_.i(t), temp_lines[GFS]);
+        gate_weights_[GFS].MatrixDotVector(source_.i(t), temp_lines[GFS]);
       else
-        gate_weights_[GFS].MatrixDotVectorFloat(curr_input, temp_lines[GFS]);
-      FuncInplaceFloat<FFunc>(ns_, temp_lines[GFS]);
+        gate_weights_[GFS].MatrixDotVector(curr_input, temp_lines[GFS]);
+      FuncInplace<FFunc>(ns_, temp_lines[GFS]);
     }
 
     SECTION_IF_OPENMP
     // Output gates.
     if (source_.int_mode())
-      gate_weights_[GO].MatrixDotVectorFloat(source_.i(t), temp_lines[GO]);
+      gate_weights_[GO].MatrixDotVector(source_.i(t), temp_lines[GO]);
     else
-      gate_weights_[GO].MatrixDotVectorFloat(curr_input, temp_lines[GO]);
-    FuncInplaceFloat<FFunc>(ns_, temp_lines[GO]);
+      gate_weights_[GO].MatrixDotVector(curr_input, temp_lines[GO]);
+    FuncInplace<FFunc>(ns_, temp_lines[GO]);
     END_PARALLEL_IF_OPENMP
 
     // Apply forget gate to state.
-    MultiplyVectorsInPlaceFloat(ns_, temp_lines[GF1], curr_state);
+    MultiplyVectorsInPlace(ns_, temp_lines[GF1], curr_state);
     if (Is2D()) {
       // Max-pool the forget gates (in 2-d) instead of blindly adding.
       int8_t* which_fg_col = which_fg_[t];
@@ -571,43 +571,43 @@ void LSTM::ForwardFloat(bool debug, const NetworkIO& input,
         }
       }
     }
-    MultiplyAccumulateFloat(ns_, temp_lines[CI], temp_lines[GI], curr_state);
+    MultiplyAccumulate(ns_, temp_lines[CI], temp_lines[GI], curr_state);
     // Clip curr_state to a sane range.
     ClipVector<float>(ns_, -kStateClip, kStateClip, curr_state);
     if (IsTraining()) {
       // Save the gate node values.
-      node_values_[CI].WriteTimeStepFloat(t, temp_lines[CI]);
-      node_values_[GI].WriteTimeStepFloat(t, temp_lines[GI]);
-      node_values_[GF1].WriteTimeStepFloat(t, temp_lines[GF1]);
-      node_values_[GO].WriteTimeStepFloat(t, temp_lines[GO]);
-      if (Is2D()) node_values_[GFS].WriteTimeStepFloat(t, temp_lines[GFS]);
+      node_values_[CI].WriteTimeStep(t, temp_lines[CI]);
+      node_values_[GI].WriteTimeStep(t, temp_lines[GI]);
+      node_values_[GF1].WriteTimeStep(t, temp_lines[GF1]);
+      node_values_[GO].WriteTimeStep(t, temp_lines[GO]);
+      if (Is2D()) node_values_[GFS].WriteTimeStep(t, temp_lines[GFS]);
     }
-    FuncMultiplyFloat<HFunc>(curr_state, temp_lines[GO], ns_, curr_output);
-    if (IsTraining()) state_.WriteTimeStepFloat(t, curr_state);
+    FuncMultiply<HFunc>(curr_state, temp_lines[GO], ns_, curr_output);
+    if (IsTraining()) state_.WriteTimeStep(t, curr_state);
     if (softmax_ != nullptr) {
       if (input.int_mode()) {
-        int_output->WriteTimeStepPartFloat(0, 0, ns_, curr_output);
-        softmax_->ForwardTimeStepFloat(int_output->i(0), t, softmax_output);
+        int_output->WriteTimeStepPart(0, 0, ns_, curr_output);
+        softmax_->ForwardTimeStep(int_output->i(0), t, softmax_output);
       } else {
-        softmax_->ForwardTimeStepFloat(curr_output, t, softmax_output);
+        softmax_->ForwardTimeStep(curr_output, t, softmax_output);
       }
-      output->WriteTimeStepFloat(t, softmax_output);
+      output->WriteTimeStep(t, softmax_output);
       if (type_ == NT_LSTM_SOFTMAX_ENCODED) {
-        CodeInBinaryFloat(no_, nf_, softmax_output);
+        CodeInBinary(no_, nf_, softmax_output);
       }
     } else if (type_ == NT_LSTM_SUMMARY) {
       // Output only at the end of a row.
       if (src_index.IsLast(FD_WIDTH)) {
-        output->WriteTimeStepFloat(dest_index.t(), curr_output);
+        output->WriteTimeStep(dest_index.t(), curr_output);
         dest_index.Increment();
       }
     } else {
-      output->WriteTimeStepFloat(t, curr_output);
+      output->WriteTimeStep(t, curr_output);
     }
     // Save states for use by the 2nd dimension only if needed.
     if (Is2D()) {
-      CopyVectorFloat(ns_, curr_state, states[mod_t]);
-      CopyVectorFloat(ns_, curr_output, outputs[mod_t]);
+      CopyVector(ns_, curr_state, states[mod_t]);
+      CopyVector(ns_, curr_output, outputs[mod_t]);
     }
     // Always zero the states at the end of every row, but only for the major
     // direction. The 2-D state remains intact.

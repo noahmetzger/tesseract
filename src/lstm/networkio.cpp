@@ -609,7 +609,7 @@ void NetworkIO::ReadTimeStep(int t, double* output) const {
   }
 }
 
-void NetworkIO::ReadTimeStepFloat(int t, float* output) const {
+void NetworkIO::ReadTimeStep(int t, float* output) const {
   if (int_mode_) {
     const int8_t* line = i_[t];
     for (int i = 0; i < i_.dim2(); ++i) {
@@ -659,8 +659,8 @@ void NetworkIO::AddTimeStepPart(int t, int offset, int num_features,
 void NetworkIO::WriteTimeStep(int t, const double* input) {
   WriteTimeStepPart(t, 0, NumFeatures(), input);
 }
-void NetworkIO::WriteTimeStepFloat(int t, const float* input) {
-  WriteTimeStepPartFloat(t, 0, NumFeatures(), input);
+void NetworkIO::WriteTimeStep(int t, const float* input) {
+  WriteTimeStepPart(t, 0, NumFeatures(), input);
 }
 
 // Writes a single timestep from floats in the range [-1, 1] writing only
@@ -681,7 +681,7 @@ void NetworkIO::WriteTimeStepPart(int t, int offset, int num_features,
   }
 }
 
-void NetworkIO::WriteTimeStepPartFloat(int t, int offset, int num_features,
+void NetworkIO::WriteTimeStepPart(int t, int offset, int num_features,
                                   const float* input) {
   if (int_mode_) {
     int8_t* line = i_[t] + offset;

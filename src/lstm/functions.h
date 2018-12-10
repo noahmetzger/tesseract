@@ -191,7 +191,7 @@ inline void FuncInplace(int n, double* inout) {
   }
 }
 template <class Func>
-inline void FuncInplaceFloat(int n, float* inout) {
+inline void FuncInplace(int n, float* inout) {
   Func f;
   for (int i = 0; i < n; ++i) {
     inout[i] = f(inout[i]);
@@ -207,7 +207,7 @@ inline void FuncMultiply(const double* u, const double* v, int n, double* out) {
   }
 }
 template <class Func>
-inline void FuncMultiplyFloat(const float* u, const float* v, int n,
+inline void FuncMultiply(const float* u, const float* v, int n,
                               float* out) {
   Func f;
   for (int i = 0; i < n; ++i) {
@@ -243,7 +243,7 @@ inline void CopyVector(int n, const double* src, double* dest) {
   memcpy(dest, src, n * sizeof(dest[0]));
 }
 
-inline void CopyVectorFloat(int n, const float* src, float* dest) {
+inline void CopyVector(int n, const float* src, float* dest) {
   memcpy(dest, src, n * sizeof(dest[0]));
 }
 
@@ -257,7 +257,7 @@ inline void MultiplyVectorsInPlace(int n, const double* src, double* inout) {
   for (int i = 0; i < n; ++i) inout[i] *= src[i];
 }
 
-inline void MultiplyVectorsInPlaceFloat(int n, const float* src, float* inout) {
+inline void MultiplyVectorsInPlace(int n, const float* src, float* inout) {
   for (int i = 0; i < n; ++i) inout[i] *= src[i];
 }
 
@@ -269,7 +269,7 @@ inline void MultiplyAccumulate(int n, const double* u, const double* v,
   }
 }
 
-inline void MultiplyAccumulateFloat(int n, const float* u, const float* v,
+inline void MultiplyAccumulate(int n, const float* u, const float* v,
                                     float* out) {
   for (int i = 0; i < n; i++) {
     out[i] += u[i] * v[i];
@@ -315,7 +315,7 @@ inline void CodeInBinary(int n, int nf, double* vec) {
   }
 }
 
-inline void CodeInBinaryFloat(int n, int nf, float* vec) {
+inline void CodeInBinary(int n, int nf, float* vec) {
   if (nf <= 0 || n < nf) return;
   int index = 0;
   float best_score = vec[0];

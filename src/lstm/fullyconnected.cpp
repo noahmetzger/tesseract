@@ -198,12 +198,12 @@ void FullyConnected::ForwardFloat(bool debug, const NetworkIO& input,
 #endif
     float* temp_line = temp_lines[thread_id];
     if (input.int_mode()) {
-      ForwardTimeStepFloat(input.i(t), t, temp_line);
+      ForwardTimeStep(input.i(t), t, temp_line);
     } else {
-      input.ReadTimeStepFloat(t, curr_input[thread_id]);
-      ForwardTimeStepFloat(curr_input[thread_id], t, temp_line);
+      input.ReadTimeStep(t, curr_input[thread_id]);
+      ForwardTimeStep(curr_input[thread_id], t, temp_line);
     }
-    output->WriteTimeStepFloat(t, temp_line);
+    output->WriteTimeStep(t, temp_line);
     if (IsTraining() && type_ != NT_SOFTMAX) {
       acts_.CopyTimeStepFrom(t, *output, t);
     }
@@ -253,17 +253,17 @@ void FullyConnected::ForwardTimeStep(int t, double* output_line) {
   }
 }
 
-void FullyConnected::ForwardTimeStepFloat(int t, float* output_line) {
+void FullyConnected::ForwardTimeStep(int t, float* output_line) {
   if (type_ == NT_TANH) {
-    FuncInplaceFloat<GFunc>(no_, output_line);
+    FuncInplace<GFunc>(no_, output_line);
   } else if (type_ == NT_LOGISTIC) {
-    FuncInplaceFloat<FFunc>(no_, output_line);
+    FuncInplace<FFunc>(no_, output_line);
   } else if (type_ == NT_POSCLIP) {
-    FuncInplaceFloat<ClipFFunc>(no_, output_line);
+    FuncInplace<ClipFFunc>(no_, output_line);
   } else if (type_ == NT_SYMCLIP) {
-    FuncInplaceFloat<ClipGFunc>(no_, output_line);
+    FuncInplace<ClipGFunc>(no_, output_line);
   } else if (type_ == NT_RELU) {
-    FuncInplaceFloat<Relu>(no_, output_line);
+    FuncInplace<Relu>(no_, output_line);
   } else if (type_ == NT_SOFTMAX || type_ == NT_SOFTMAX_NO_CTC) {
     SoftmaxInPlace(no_, output_line);
   } else if (type_ != NT_LINEAR) {
@@ -280,13 +280,13 @@ void FullyConnected::ForwardTimeStep(const double* d_input,
   ForwardTimeStep(t, output_line);
 }
 
-void FullyConnected::ForwardTimeStepFloat(const float* d_input, int t,
+void FullyConnected::ForwardTimeStep(const float* d_input, int t,
                                      float* output_line) {
   // input is copied to source_ line-by-line for cache coherency.
   if (IsTraining() && external_source_ == nullptr)
     source_t_.WriteStrided(t, d_input);
-  weights_.MatrixDotVectorFloat(d_input, output_line);
-  ForwardTimeStepFloat(t, output_line);
+  weights_.MatrixDotVector(d_input, output_line);
+  ForwardTimeStep(t, output_line);
 }
 
 void FullyConnected::ForwardTimeStep(const int8_t* i_input,
@@ -296,11 +296,11 @@ void FullyConnected::ForwardTimeStep(const int8_t* i_input,
   ForwardTimeStep(t, output_line);
 }
 
-void FullyConnected::ForwardTimeStepFloat(const int8_t* i_input, int t,
+void FullyConnected::ForwardTimeStep(const int8_t* i_input, int t,
                                      float* output_line) {
   // input is copied to source_ line-by-line for cache coherency.
-  weights_.MatrixDotVectorFloat(i_input, output_line);
-  ForwardTimeStepFloat(t, output_line);
+  weights_.MatrixDotVector(i_input, output_line);
+  ForwardTimeStep(t, output_line);
 }
 
 // Runs backward propagation of errors on the deltas line.

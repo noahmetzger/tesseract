@@ -926,7 +926,7 @@ void ColumnFinder::ComputeMeanColumnGap(bool any_multi_column) {
                                                     &gap_samples);
   }
   mean_column_gap_ = any_multi_column && gap_samples > 0
-      ? total_gap / gap_samples : width_samples > 0 
+      ? total_gap / gap_samples : width_samples > 0
       ? total_width / width_samples : 0;
 }
 

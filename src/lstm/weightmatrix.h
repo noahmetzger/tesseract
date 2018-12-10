@@ -123,8 +123,8 @@ class WeightMatrix {
   // Asserts that the call matches what we have.
   void MatrixDotVector(const double* u, double* v) const;
   void MatrixDotVector(const int8_t* u, double* v) const;
-  void MatrixDotVectorFloat(const float* u, float* v) const;
-  void MatrixDotVectorFloat(const int8_t* u, float* v) const;
+  void MatrixDotVector(const float* u, float* v) const;
+  void MatrixDotVector(const int8_t* u, float* v) const;
   // MatrixDotVector for peep weights, MultiplyAccumulate adds the
   // component-wise products of *this[0] and v to inout.
   void MultiplyAccumulate(const double* v, double* inout);
@@ -159,9 +159,6 @@ class WeightMatrix {
   static void DoubleToFloat(GENERIC_2D_ARRAY<double>& wf,
                             GENERIC_2D_ARRAY<float>* wd);
 
-  // Dot product calculation used when AVX and SSE are not availlable
-  static float DotProductStandardFloat(const float* u, const float* v, int n);
-
  private:
   // Computes matrix.vector v = Wu.
   // u is of size starts.back()+extents.back() and the output v is of size
@@ -173,7 +170,7 @@ class WeightMatrix {
                                       bool add_bias_fwd, bool skip_bias_back,
                                       const double* u, double* v);
 
-  static void MatrixDotVectorInternalFloat(const GENERIC_2D_ARRAY<float>& w,
+  static void MatrixDotVectorInternal(const GENERIC_2D_ARRAY<float>& w,
                                            bool add_bias_fwd, bool skip_bias_back,
                                            const float* u, float* v);
 

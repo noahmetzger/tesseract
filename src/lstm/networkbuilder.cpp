@@ -45,7 +45,7 @@ namespace tesseract {
 bool NetworkBuilder::InitNetwork(int num_outputs, STRING network_spec,
                                  int append_index, int net_flags,
                                  float weight_range, TRand* randomizer,
-                                 Network** network) {
+                                 Network** network, bool float_mode) {
   NetworkBuilder builder(num_outputs);
   Series* bottom_series = nullptr;
   StaticShape input_shape;
@@ -66,7 +66,7 @@ bool NetworkBuilder::InitNetwork(int num_outputs, STRING network_spec,
   *network = builder.BuildFromString(input_shape, &str_ptr);
   if (*network == nullptr) return false;
   (*network)->SetNetworkFlags(net_flags);
-  (*network)->InitWeights(weight_range, randomizer);
+  (*network)->InitWeights(weight_range, randomizer, float_mode);
   (*network)->SetupNeedsBackprop(false);
   if (bottom_series != nullptr) {
     bottom_series->AppendSeries(*network);

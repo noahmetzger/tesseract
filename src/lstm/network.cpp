@@ -77,6 +77,7 @@ Network::Network()
     : type_(NT_NONE),
       training_(TS_ENABLED),
       needs_to_backprop_(true),
+      float_mode_(false),
       network_flags_(0),
       ni_(0),
       no_(0),
@@ -88,6 +89,7 @@ Network::Network(NetworkType type, const STRING& name, int ni, int no)
     : type_(type),
       training_(TS_ENABLED),
       needs_to_backprop_(true),
+      float_mode_(false),
       network_flags_(0),
       ni_(ni),
       no_(no),
@@ -107,7 +109,7 @@ Network::Network(NetworkType type, const STRING& name, int ni, int no)
 // state. If in TS_TEMP_DISABLE then the flag is just changed, but if in
 // TS_DISABLED, the deltas in the weight matrices are reinitialized so that a
 // recognizer can be converted back to a trainer.
-void Network::SetEnableTraining(TrainingState state) {
+void Network::SetEnableTraining(TrainingState state, bool float_mode) {
   if (state == TS_RE_ENABLE) {
     // Enable only from temp disabled.
     if (training_ == TS_TEMP_DISABLE) training_ = TS_ENABLED;
@@ -117,6 +119,7 @@ void Network::SetEnableTraining(TrainingState state) {
   } else {
     training_ = state;
   }
+  float_mode_ = float_mode;
 }
 
 // Sets flags that control the action of the network. See NetworkFlags enum
@@ -127,8 +130,9 @@ void Network::SetNetworkFlags(uint32_t flags) {
 
 // Sets up the network for training. Initializes weights using weights of
 // scale `range` picked according to the random number generator `randomizer`.
-int Network::InitWeights(float range, TRand* randomizer) {
+int Network::InitWeights(float range, TRand* randomizer, bool float_mode) {
   randomizer_ = randomizer;
+  float_mode_ = float_mode;
   return 0;
 }
 
@@ -149,6 +153,23 @@ bool Network::SetupNeedsBackprop(bool needs_backprop) {
 
 // Writes to the given file. Returns false in case of error.
 bool Network::Serialize(TFile* fp) const {
+  int8_t data = NT_NONE;
+  if (!fp->Serialize(&data)) return false;
+  STRING type_name = kTypeNames[type_];
+  if (!type_name.Serialize(fp)) return false;
+  data = training_;
+  if (!fp->Serialize(&data)) return false;
+  data = needs_to_backprop_;
+  if (!fp->Serialize(&data)) return false;
+  if (!fp->Serialize(&network_flags_)) return false;
+  if (!fp->Serialize(&ni_)) return false;
+  if (!fp->Serialize(&no_)) return false;
+  if (!fp->Serialize(&num_weights_)) return false;
+  if (!name_.Serialize(fp)) return false;
+  return true;
+}
+
+bool Network::SerializeFloat(TFile* fp) const {
   int8_t data = NT_NONE;
   if (!fp->Serialize(&data)) return false;
   STRING type_name = kTypeNames[type_];

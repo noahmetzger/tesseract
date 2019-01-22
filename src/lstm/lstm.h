@@ -71,14 +71,15 @@ class LSTM : public Network {
 
   // Suspends/Enables training by setting the training_ flag. Serialize and
   // DeSerialize only operate on the run-time data if state is false.
-  void SetEnableTraining(TrainingState state) override;
+  void SetEnableTraining(TrainingState state, bool float_mode) override;
 
   // Sets up the network for training. Initializes weights using weights of
   // scale `range` picked according to the random number generator `randomizer`.
-  int InitWeights(float range, TRand* randomizer) override;
+  int InitWeights(float range, TRand* randomizer, bool float_mode) override;
   // Recursively searches the network for softmaxes with old_no outputs,
   // and remaps their outputs according to code_map. See network.h for details.
   int RemapOutputs(int old_no, const std::vector<int>& code_map) override;
+  int RemapOutputsFloat(int old_no, const std::vector<int>& code_map) override;
 
   // Converts a float network to an int network.
   void ConvertToInt() override;
@@ -88,6 +89,7 @@ class LSTM : public Network {
 
   // Writes to the given file. Returns false in case of error.
   bool Serialize(TFile* fp) const override;
+  bool SerializeFloat(TFile* fp) const override;
   // Reads from the given file. Returns false in case of error.
   bool DeSerialize(TFile* fp) override;
 
@@ -98,17 +100,24 @@ class LSTM : public Network {
                NetworkIO* output) override;
 
   void ForwardFloat(bool debug, const NetworkIO& input,
-               const TransposedArray* input_transpose, NetworkScratch* scratch,
+               const TransposedArray32* input_transpose, NetworkScratch* scratch,
                NetworkIO* output) override;
 
   // Runs backward propagation of errors on the deltas line.
   // See Network for a detailed discussion of the arguments.
   bool Backward(bool debug, const NetworkIO& fwd_deltas,
                 NetworkScratch* scratch, NetworkIO* back_deltas) override;
+
+  bool BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                NetworkScratch* scratch, NetworkIO* back_deltas) override;
+
   // Updates the weights using the given learning rate, momentum and adam_beta.
   // num_samples is used in the adam computation iff use_adam_ is true.
   void Update(float learning_rate, float momentum, float adam_beta,
               int num_samples) override;
+  void UpdateFloat(float learning_rate, float momentum, float adam_beta,
+              int num_samples) override;
+
   // Sums the products of weight updates in *this and other, splitting into
   // positive (same direction) in *same and negative (different direction) in
   // *changed.

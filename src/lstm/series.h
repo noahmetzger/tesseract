@@ -45,10 +45,11 @@ class Series : public Plumbing {
   // Sets up the network for training. Initializes weights using weights of
   // scale `range` picked according to the random number generator `randomizer`.
   // Returns the number of weights initialized.
-  int InitWeights(float range, TRand* randomizer) override;
+  int InitWeights(float range, TRand* randomizer, bool float_mode) override;
   // Recursively searches the network for softmaxes with old_no outputs,
   // and remaps their outputs according to code_map. See network.h for details.
   int RemapOutputs(int old_no, const std::vector<int>& code_map) override;
+  int RemapOutputsFloat(int old_no, const std::vector<int>& code_map) override;
 
   // Sets needs_to_backprop_ to needs_backprop and returns true if
   // needs_backprop || any weights in this network so the next layer forward
@@ -74,12 +75,15 @@ class Series : public Plumbing {
                NetworkIO* output) override;
 
   void ForwardFloat(bool debug, const NetworkIO& input,
-                    const TransposedArray* input_transpose, NetworkScratch* scratch,
+                    const TransposedArray32* input_transpose, NetworkScratch* scratch,
                     NetworkIO* output) override;
 
   // Runs backward propagation of errors on the deltas line.
   // See Network for a detailed discussion of the arguments.
   bool Backward(bool debug, const NetworkIO& fwd_deltas,
+                NetworkScratch* scratch, NetworkIO* back_deltas) override;
+
+  bool BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
                 NetworkScratch* scratch, NetworkIO* back_deltas) override;
 
   // Splits the series after the given index, returning the two parts and

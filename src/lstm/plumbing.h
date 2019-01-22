@@ -45,7 +45,7 @@ class Plumbing : public Network {
 
   // Suspends/Enables training by setting the training_ flag. Serialize and
   // DeSerialize only operate on the run-time data if state is false.
-  void SetEnableTraining(TrainingState state) override;
+  void SetEnableTraining(TrainingState state, bool float_mode) override;
 
   // Sets flags that control the action of the network. See NetworkFlags enum
   // for bit values.
@@ -56,10 +56,11 @@ class Plumbing : public Network {
   // Note that randomizer is a borrowed pointer that should outlive the network
   // and should not be deleted by any of the networks.
   // Returns the number of weights initialized.
-  int InitWeights(float range, TRand* randomizer) override;
+  int InitWeights(float range, TRand* randomizer, bool float_mode) override;
   // Recursively searches the network for softmaxes with old_no outputs,
   // and remaps their outputs according to code_map. See network.h for details.
   int RemapOutputs(int old_no, const std::vector<int>& code_map) override;
+  int RemapOutputsFloat(int old_no, const std::vector<int>& code_map) override;
 
   // Converts a float network to an int network.
   void ConvertToInt() override;
@@ -118,6 +119,7 @@ class Plumbing : public Network {
 
   // Writes to the given file. Returns false in case of error.
   bool Serialize(TFile* fp) const override;
+  bool SerializeFloat(TFile* fp) const override;
   // Reads from the given file. Returns false in case of error.
   bool DeSerialize(TFile* fp) override;
 
@@ -125,6 +127,9 @@ class Plumbing : public Network {
   // num_samples is used in the adam computation iff use_adam_ is true.
   void Update(float learning_rate, float momentum, float adam_beta,
               int num_samples) override;
+  void UpdateFloat(float learning_rate, float momentum, float adam_beta,
+              int num_samples) override;
+
   // Sums the products of weight updates in *this and other, splitting into
   // positive (same direction) in *same and negative (different direction) in
   // *changed.

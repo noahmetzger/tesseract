@@ -44,11 +44,12 @@ StaticShape Series::OutputShape(const StaticShape& input_shape) const {
 // Sets up the network for training. Initializes weights using weights of
 // scale `range` picked according to the random number generator `randomizer`.
 // Note that series has its own implementation just for debug purposes.
-int Series::InitWeights(float range, TRand* randomizer) {
+int Series::InitWeights(float range, TRand* randomizer, bool float_mode) {
   num_weights_ = 0;
+  float_mode_ = float_mode;
   tprintf("Num outputs,weights in Series:\n");
   for (int i = 0; i < stack_.size(); ++i) {
-    int weights = stack_[i]->InitWeights(range, randomizer);
+    int weights = stack_[i]->InitWeights(range, randomizer, float_mode);
     tprintf("  %s:%d, %d\n",
             stack_[i]->spec().string(), stack_[i]->NumOutputs(), weights);
     num_weights_ += weights;
@@ -64,6 +65,19 @@ int Series::RemapOutputs(int old_no, const std::vector<int>& code_map) {
   tprintf("Num (Extended) outputs,weights in Series:\n");
   for (int i = 0; i < stack_.size(); ++i) {
     int weights = stack_[i]->RemapOutputs(old_no, code_map);
+    tprintf("  %s:%d, %d\n", stack_[i]->spec().string(),
+            stack_[i]->NumOutputs(), weights);
+    num_weights_ += weights;
+  }
+  tprintf("Total weights = %d\n", num_weights_);
+  no_ = stack_.back()->NumOutputs();
+  return num_weights_;
+}
+int Series::RemapOutputsFloat(int old_no, const std::vector<int>& code_map) {
+  num_weights_ = 0;
+  tprintf("Num (Extended) outputs,weights in Series:\n");
+  for (int i = 0; i < stack_.size(); ++i) {
+    int weights = stack_[i]->RemapOutputsFloat(old_no, code_map);
     tprintf("  %s:%d, %d\n", stack_[i]->spec().string(),
             stack_[i]->NumOutputs(), weights);
     num_weights_ += weights;
@@ -124,7 +138,7 @@ void Series::Forward(bool debug, const NetworkIO& input,
   }
 }
 void Series::ForwardFloat(bool debug, const NetworkIO& input,
-                     const TransposedArray* input_transpose,
+                     const TransposedArray32* input_transpose,
                      NetworkScratch* scratch, NetworkIO* output) {
   int stack_size = stack_.size();
   ASSERT_HOST(stack_size > 1);
@@ -167,6 +181,33 @@ bool Series::Backward(bool debug, const NetworkIO& fwd_deltas,
     if (i == 0) return needs_to_backprop_;
     if (!stack_[i - 1]->IsTraining() ||
         !stack_[i - 1]->Backward(debug, *buffer2, scratch,
+                                 i > 1 ? buffer1 : back_deltas))
+      return false;
+  }
+  return needs_to_backprop_;
+}
+
+bool Series::BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                      NetworkScratch* scratch, NetworkIO* back_deltas) {
+  if (!IsTraining()) return false;
+  int stack_size = stack_.size();
+  ASSERT_HOST(stack_size > 1);
+  // Revolving intermediate buffers.
+  NetworkScratch::IO buffer1(fwd_deltas, scratch);
+  NetworkScratch::IO buffer2(fwd_deltas, scratch);
+  // Run each network in reverse order, giving the back_deltas output of n as
+  // the fwd_deltas input to n-1, with the 0 network providing the real output.
+  if (!stack_.back()->IsTraining() ||
+      !stack_.back()->BackwardFloat(debug, fwd_deltas, scratch, buffer1))
+    return false;
+  for (int i = stack_size - 2; i >= 0; i -= 2) {
+    if (!stack_[i]->IsTraining() ||
+        !stack_[i]->BackwardFloat(debug, *buffer1, scratch,
+                             i > 0 ? buffer2 : back_deltas))
+      return false;
+    if (i == 0) return needs_to_backprop_;
+    if (!stack_[i - 1]->IsTraining() ||
+        !stack_[i - 1]->BackwardFloat(debug, *buffer2, scratch,
                                  i > 1 ? buffer1 : back_deltas))
       return false;
   }

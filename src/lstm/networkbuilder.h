@@ -50,7 +50,7 @@ class NetworkBuilder {
   // Returns false if something failed.
   static bool InitNetwork(int num_outputs, STRING network_spec,
                           int append_index, int net_flags, float weight_range,
-                          TRand* randomizer, Network** network);
+                          TRand* randomizer, Network** network, bool float_mode);
 
   // Parses the given string and returns a network according to the following
   // language:

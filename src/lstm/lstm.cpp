@@ -68,8 +68,10 @@ namespace tesseract {
 // Max absolute value of state_. It is reasonably high to enable the state
 // to count things.
 const double kStateClip = 100.0;
+const float kStateClip32 = 100.0f;
 // Max absolute value of gate_errors (the gradients).
 const double kErrClip = 1.0f;
+const float kErrClip32 = 1.0f;
 
 // Calculate ceil(log2(n)).
 static inline uint32_t ceil_log2(uint32_t n)
@@ -134,7 +136,7 @@ StaticShape LSTM::OutputShape(const StaticShape& input_shape) const {
 
 // Suspends/Enables training by setting the training_ flag. Serialize and
 // DeSerialize only operate on the run-time data if state is false.
-void LSTM::SetEnableTraining(TrainingState state) {
+void LSTM::SetEnableTraining(TrainingState state, bool float_mode) {
   if (state == TS_RE_ENABLE) {
     // Enable only from temp disabled.
     if (training_ == TS_TEMP_DISABLE) training_ = TS_ENABLED;
@@ -143,28 +145,45 @@ void LSTM::SetEnableTraining(TrainingState state) {
     if (training_ == TS_ENABLED) training_ = state;
   } else {
     if (state == TS_ENABLED && training_ != TS_ENABLED) {
-      for (int w = 0; w < WT_COUNT; ++w) {
-        if (w == GFS && !Is2D()) continue;
-        gate_weights_[w].InitBackward();
+      if (!float_mode) {
+        for (int w = 0; w < WT_COUNT; ++w) {
+          if (w == GFS && !Is2D()) continue;
+          gate_weights_[w].InitBackward();
+        }
+      } else {
+        for (int w = 0; w < WT_COUNT; ++w) {
+          if (w == GFS && !Is2D()) continue;
+          gate_weights_[w].InitBackward32();
+        }
       }
     }
     training_ = state;
   }
-  if (softmax_ != nullptr) softmax_->SetEnableTraining(state);
+  if (softmax_ != nullptr) softmax_->SetEnableTraining(state, float_mode);
 }
 
 // Sets up the network for training. Initializes weights using weights of
 // scale `range` picked according to the random number generator `randomizer`.
-int LSTM::InitWeights(float range, TRand* randomizer) {
+int LSTM::InitWeights(float range, TRand* randomizer, bool float_mode) {
   Network::SetRandomizer(randomizer);
   num_weights_ = 0;
-  for (int w = 0; w < WT_COUNT; ++w) {
-    if (w == GFS && !Is2D()) continue;
-    num_weights_ += gate_weights_[w].InitWeightsFloat(
-        ns_, na_ + 1, TestFlag(NF_ADAM), range, randomizer);
+  float_mode_ = float_mode;
+  if (!float_mode) {
+    for (int w = 0; w < WT_COUNT; ++w) {
+      if (w == GFS && !Is2D()) continue;
+      num_weights_ += gate_weights_[w].InitWeightsFloat(
+          ns_, na_ + 1, TestFlag(NF_ADAM), range, randomizer);
+    }
+  } else {
+    for (int w = 0; w < WT_COUNT; ++w) {
+      if (w == GFS && !Is2D()) continue;
+      num_weights_ += gate_weights_[w].InitWeightsFloat32(
+          ns_, na_ + 1, TestFlag(NF_ADAM), range, randomizer);
+    }
   }
+
   if (softmax_ != nullptr) {
-    num_weights_ += softmax_->InitWeights(range, randomizer);
+    num_weights_ += softmax_->InitWeights(range, randomizer, float_mode);
   }
   return num_weights_;
 }
@@ -175,6 +194,13 @@ int LSTM::RemapOutputs(int old_no, const std::vector<int>& code_map) {
   if (softmax_ != nullptr) {
     num_weights_ -= softmax_->num_weights();
     num_weights_ += softmax_->RemapOutputs(old_no, code_map);
+  }
+  return num_weights_;
+}
+int LSTM::RemapOutputsFloat(int old_no, const std::vector<int>& code_map) {
+  if (softmax_ != nullptr) {
+    num_weights_ -= softmax_->num_weights();
+    num_weights_ += softmax_->RemapOutputsFloat(old_no, code_map);
   }
   return num_weights_;
 }
@@ -215,6 +241,17 @@ bool LSTM::Serialize(TFile* fp) const {
   return true;
 }
 
+bool LSTM::SerializeFloat(TFile* fp) const {
+  if (!Network::SerializeFloat(fp)) return false;
+  if (!fp->Serialize(&na_)) return false;
+  for (int w = 0; w < WT_COUNT; ++w) {
+    if (w == GFS && !Is2D()) continue;
+    if (!gate_weights_[w].SerializeFloat(IsTraining(), fp)) return false;
+  }
+  if (softmax_ != nullptr && !softmax_->SerializeFloat(fp)) return false;
+  return true;
+}
+
 // Reads from the given file. Returns false in case of error.
 
 bool LSTM::DeSerialize(TFile* fp) {
@@ -229,7 +266,12 @@ bool LSTM::DeSerialize(TFile* fp) {
   is_2d_ = false;
   for (int w = 0; w < WT_COUNT; ++w) {
     if (w == GFS && !Is2D()) continue;
-    if (!gate_weights_[w].DeSerialize(IsTraining(), fp)) return false;
+    if (!float_mode_) {
+      if (!gate_weights_[w].DeSerialize(IsTraining(), fp)) return false;
+    } else {
+      if (!gate_weights_[w].DeSerializeFloat(IsTraining(), fp)) return false;
+    }
+    
     if (w == CI) {
       ns_ = gate_weights_[CI].NumOutputs();
       is_2d_ = na_ - nf_ == ni_ + 2 * ns_;
@@ -439,7 +481,7 @@ void LSTM::Forward(bool debug, const NetworkIO& input,
 // Runs forward propagation of activations on the input line.
 // See NetworkCpp for a detailed discussion of the arguments.
 void LSTM::ForwardFloat(bool debug, const NetworkIO& input,
-                   const TransposedArray* input_transpose,
+                   const TransposedArray32* input_transpose,
                    NetworkScratch* scratch, NetworkIO* output) {
   input_map_ = input.stride_map();
   input_width_ = input.Width();
@@ -853,6 +895,229 @@ bool LSTM::Backward(bool debug, const NetworkIO& fwd_deltas,
   return needs_to_backprop_;
 }
 
+bool LSTM::BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                    NetworkScratch* scratch, NetworkIO* back_deltas) {
+  if (debug) DisplayBackward(fwd_deltas);
+  back_deltas->ResizeToMap(fwd_deltas.int_mode(), input_map_, ni_);
+  // ======Scratch space.======
+  // Output errors from deltas with recurrence from sourceerr.
+  NetworkScratch::Float32Vec outputerr;
+  outputerr.Init(ns_, scratch);
+  // Recurrent error in the state/source.
+  NetworkScratch::Float32Vec curr_stateerr, curr_sourceerr;
+  curr_stateerr.Init(ns_, scratch);
+  curr_sourceerr.Init(na_, scratch);
+  ZeroVector<float>(ns_, curr_stateerr);
+  ZeroVector<float>(na_, curr_sourceerr);
+  // Errors in the gates.
+  NetworkScratch::Float32Vec gate_errors[WT_COUNT];
+  for (int g = 0; g < WT_COUNT; ++g) gate_errors[g].Init(ns_, scratch);
+  // Rotating buffers of width buf_width allow storage of the recurrent time-
+  // steps used only for true 2-D. Stores one full strip of the major direction.
+  int buf_width = Is2D() ? input_map_.Size(FD_WIDTH) : 1;
+  GenericVector<NetworkScratch::Float32Vec> stateerr, sourceerr;
+  if (Is2D()) {
+    stateerr.init_to_size(buf_width, NetworkScratch::Float32Vec());
+    sourceerr.init_to_size(buf_width, NetworkScratch::Float32Vec());
+    for (int t = 0; t < buf_width; ++t) {
+      stateerr[t].Init(ns_, scratch);
+      sourceerr[t].Init(na_, scratch);
+      ZeroVector<float>(ns_, stateerr[t]);
+      ZeroVector<float>(na_, sourceerr[t]);
+    }
+  }
+  // Parallel-generated sourceerr from each of the gates.
+  NetworkScratch::Float32Vec sourceerr_temps[WT_COUNT];
+  for (int w = 0; w < WT_COUNT; ++w) sourceerr_temps[w].Init(na_, scratch);
+  int width = input_width_;
+  // Transposed gate errors stored over all timesteps for sum outer.
+  NetworkScratch::GradientStore32 gate_errors_t[WT_COUNT];
+  for (int w = 0; w < WT_COUNT; ++w) {
+    gate_errors_t[w].Init(ns_, width, scratch);
+  }
+  // Used only if softmax_ != nullptr.
+  NetworkScratch::Float32Vec softmax_errors;
+  NetworkScratch::GradientStore32 softmax_errors_t;
+  if (softmax_ != nullptr) {
+    softmax_errors.Init(no_, scratch);
+    softmax_errors_t.Init(no_, width, scratch);
+  }
+  float state_clip = Is2D() ? 9.0 : 4.0;
+#if DEBUG_DETAIL > 1
+  tprintf("fwd_deltas:%s\n", name_.string());
+  fwd_deltas.Print(10);
+#endif
+  StrideMap::Index dest_index(input_map_);
+  dest_index.InitToLast();
+  // Used only by NT_LSTM_SUMMARY.
+  StrideMap::Index src_index(fwd_deltas.stride_map());
+  src_index.InitToLast();
+  do {
+    int t = dest_index.t();
+    bool at_last_x = dest_index.IsLast(FD_WIDTH);
+    // up_pos is the 2-D back step, down_pos is the 2-D fwd step, and are only
+    // valid if >= 0, which is true if 2d and not on the top/bottom.
+    int up_pos = -1;
+    int down_pos = -1;
+    if (Is2D()) {
+      if (dest_index.index(FD_HEIGHT) > 0) {
+        StrideMap::Index up_index(dest_index);
+        if (up_index.AddOffset(-1, FD_HEIGHT)) up_pos = up_index.t();
+      }
+      if (!dest_index.IsLast(FD_HEIGHT)) {
+        StrideMap::Index down_index(dest_index);
+        if (down_index.AddOffset(1, FD_HEIGHT)) down_pos = down_index.t();
+      }
+    }
+    // Index of the 2-D revolving buffers (sourceerr, stateerr).
+    int mod_t = Modulo(t, buf_width);  // Current timestep.
+    // Zero the state in the major direction only at the end of every row.
+    if (at_last_x) {
+      ZeroVector<float>(na_, curr_sourceerr);
+      ZeroVector<float>(ns_, curr_stateerr);
+    }
+    // Setup the outputerr.
+    if (type_ == NT_LSTM_SUMMARY) {
+      if (dest_index.IsLast(FD_WIDTH)) {
+        fwd_deltas.ReadTimeStep(src_index.t(), outputerr);
+        src_index.Decrement();
+      } else {
+        ZeroVector<float>(ns_, outputerr);
+      }
+    } else if (softmax_ == nullptr) {
+      fwd_deltas.ReadTimeStep(t, outputerr);
+    } else {
+      softmax_->BackwardTimeStep(fwd_deltas, t, softmax_errors,
+                                 softmax_errors_t.get(), outputerr);
+    }
+    if (!at_last_x)
+      AccumulateVector(ns_, curr_sourceerr + ni_ + nf_, outputerr);
+    if (down_pos >= 0)
+      AccumulateVector(ns_, sourceerr[mod_t] + ni_ + nf_ + ns_, outputerr);
+    // Apply the 1-d forget gates.
+    if (!at_last_x) {
+      const float* next_node_gf1 = node_values_[GF1].f(t + 1);
+      for (int i = 0; i < ns_; ++i) {
+        curr_stateerr[i] *= next_node_gf1[i];
+      }
+    }
+    if (Is2D() && t + 1 < width) {
+      for (int i = 0; i < ns_; ++i) {
+        if (which_fg_[t + 1][i] != 1) curr_stateerr[i] = 0.0;
+      }
+      if (down_pos >= 0) {
+        const float* right_node_gfs = node_values_[GFS].f(down_pos);
+        const float* right_stateerr = stateerr[mod_t];
+        for (int i = 0; i < ns_; ++i) {
+          if (which_fg_[down_pos][i] == 2) {
+            curr_stateerr[i] += right_stateerr[i] * right_node_gfs[i];
+          }
+        }
+      }
+    }
+    state_.FuncMultiply3Add<HPrime>(node_values_[GO], t, outputerr,
+                                    curr_stateerr);
+    // Clip stateerr_ to a sane range.
+    ClipVector<float>(ns_, -state_clip, state_clip, curr_stateerr);
+#if DEBUG_DETAIL > 1
+    if (t + 10 > width) {
+      tprintf("t=%d, stateerr=", t);
+      for (int i = 0; i < ns_; ++i)
+        tprintf(" %g,%g,%g", curr_stateerr[i], outputerr[i],
+                curr_sourceerr[ni_ + nf_ + i]);
+      tprintf("\n");
+    }
+#endif
+    // Matrix multiply to get the source errors.
+    PARALLEL_IF_OPENMP(GFS)
+
+    // Cell inputs.
+    node_values_[CI].FuncMultiply3<GPrime>(t, node_values_[GI], t,
+                                           curr_stateerr, gate_errors[CI]);
+    ClipVector(ns_, -kErrClip32, kErrClip32, gate_errors[CI].get());
+    gate_weights_[CI].VectorDotMatrix(gate_errors[CI], sourceerr_temps[CI]);
+    gate_errors_t[CI].get()->WriteStrided(t, gate_errors[CI]);
+
+    SECTION_IF_OPENMP
+    // Input Gates.
+    node_values_[GI].FuncMultiply3<FPrime>(t, node_values_[CI], t,
+                                           curr_stateerr, gate_errors[GI]);
+    ClipVector(ns_, -kErrClip32, kErrClip32, gate_errors[GI].get());
+    gate_weights_[GI].VectorDotMatrix(gate_errors[GI], sourceerr_temps[GI]);
+    gate_errors_t[GI].get()->WriteStrided(t, gate_errors[GI]);
+
+    SECTION_IF_OPENMP
+    // 1-D forget Gates.
+    if (t > 0) {
+      node_values_[GF1].FuncMultiply3<FPrime>(t, state_, t - 1, curr_stateerr,
+                                              gate_errors[GF1]);
+      ClipVector(ns_, -kErrClip32, kErrClip32, gate_errors[GF1].get());
+      gate_weights_[GF1].VectorDotMatrix(gate_errors[GF1],
+                                         sourceerr_temps[GF1]);
+    } else {
+      memset(gate_errors[GF1], 0, ns_ * sizeof(gate_errors[GF1][0]));
+      memset(sourceerr_temps[GF1], 0, na_ * sizeof(*sourceerr_temps[GF1]));
+    }
+    gate_errors_t[GF1].get()->WriteStrided(t, gate_errors[GF1]);
+
+    // 2-D forget Gates.
+    if (up_pos >= 0) {
+      node_values_[GFS].FuncMultiply3<FPrime>(t, state_, up_pos, curr_stateerr,
+                                              gate_errors[GFS]);
+      ClipVector(ns_, -kErrClip32, kErrClip32, gate_errors[GFS].get());
+      gate_weights_[GFS].VectorDotMatrix(gate_errors[GFS],
+                                         sourceerr_temps[GFS]);
+    } else {
+      memset(gate_errors[GFS], 0, ns_ * sizeof(gate_errors[GFS][0]));
+      memset(sourceerr_temps[GFS], 0, na_ * sizeof(*sourceerr_temps[GFS]));
+    }
+    if (Is2D()) gate_errors_t[GFS].get()->WriteStrided(t, gate_errors[GFS]);
+
+    SECTION_IF_OPENMP
+    // Output gates.
+    state_.Func2Multiply3<HFunc, FPrime>(node_values_[GO], t, outputerr,
+                                         gate_errors[GO]);
+    ClipVector(ns_, -kErrClip32, kErrClip32, gate_errors[GO].get());
+    gate_weights_[GO].VectorDotMatrix(gate_errors[GO], sourceerr_temps[GO]);
+    gate_errors_t[GO].get()->WriteStrided(t, gate_errors[GO]);
+    END_PARALLEL_IF_OPENMP
+
+    SumVectors(na_, sourceerr_temps[CI], sourceerr_temps[GI],
+               sourceerr_temps[GF1], sourceerr_temps[GO], sourceerr_temps[GFS],
+               curr_sourceerr);
+    back_deltas->WriteTimeStep(t, curr_sourceerr);
+    // Save states for use by the 2nd dimension only if needed.
+    if (Is2D()) {
+      CopyVector(ns_, curr_stateerr, stateerr[mod_t]);
+      CopyVector(na_, curr_sourceerr, sourceerr[mod_t]);
+    }
+  } while (dest_index.Decrement());
+#if DEBUG_DETAIL > 2
+  for (int w = 0; w < WT_COUNT; ++w) {
+    tprintf("%s gate errors[%d]\n", name_.string(), w);
+    gate_errors_t[w].get()->PrintUnTransposed(10);
+  }
+#endif
+  // Transposed source_ used to speed-up SumOuter.
+  NetworkScratch::GradientStore32 source_t, state_t;
+  source_t.Init(na_, width, scratch);
+  source_.Transpose(source_t.get());
+  state_t.Init(ns_, width, scratch);
+  state_.Transpose(state_t.get());
+#ifdef _OPENMP
+#  pragma omp parallel for num_threads(GFS) if (!Is2D())
+#endif
+  for (int w = 0; w < WT_COUNT; ++w) {
+    if (w == GFS && !Is2D()) continue;
+    gate_weights_[w].SumOuterTransposed(*gate_errors_t[w], *source_t, false);
+  }
+  if (softmax_ != nullptr) {
+    softmax_->FinishBackward(*softmax_errors_t);
+  }
+  return needs_to_backprop_;
+}
+
+
 // Updates the weights using the given learning rate, momentum and adam_beta.
 // num_samples is used in the adam computation iff use_adam_ is true.
 void LSTM::Update(float learning_rate, float momentum, float adam_beta,
@@ -866,6 +1131,23 @@ void LSTM::Update(float learning_rate, float momentum, float adam_beta,
   }
   if (softmax_ != nullptr) {
     softmax_->Update(learning_rate, momentum, adam_beta, num_samples);
+  }
+#if DEBUG_DETAIL > 3
+  PrintDW();
+#endif
+}
+
+void LSTM::UpdateFloat(float learning_rate, float momentum, float adam_beta,
+                  int num_samples) {
+#if DEBUG_DETAIL > 3
+  PrintW();
+#endif
+  for (int w = 0; w < WT_COUNT; ++w) {
+    if (w == GFS && !Is2D()) continue;
+    gate_weights_[w].UpdateFloat(learning_rate, momentum, adam_beta, num_samples);
+  }
+  if (softmax_ != nullptr) {
+    softmax_->UpdateFloat(learning_rate, momentum, adam_beta, num_samples);
   }
 #if DEBUG_DETAIL > 3
   PrintDW();

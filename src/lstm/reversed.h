@@ -74,7 +74,7 @@ class Reversed : public Plumbing {
                NetworkScratch* scratch, NetworkIO* output) override;
 
   void ForwardFloat(bool debug, const NetworkIO& input,
-                    const TransposedArray* input_transpose, 
+                    const TransposedArray32* input_transpose, 
                     NetworkScratch* scratch, NetworkIO* output) override;
 
   // Runs backward propagation of errors on the deltas line.
@@ -82,6 +82,9 @@ class Reversed : public Plumbing {
   bool Backward(bool debug, const NetworkIO& fwd_deltas,
                 NetworkScratch* scratch,
                 NetworkIO* back_deltas) override;
+  
+  bool BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                NetworkScratch* scratch, NetworkIO* back_deltas) override;
 
  private:
   // Copies src to *dest with the reversal according to type_.

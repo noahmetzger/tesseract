@@ -95,6 +95,24 @@ bool LSTMRecognizer::Serialize(const TessdataManager* mgr, TFile* fp) const {
   return true;
 }
 
+bool LSTMRecognizer::SerializeFloat(const TessdataManager* mgr, TFile* fp) const {
+  bool include_charsets = mgr == nullptr ||
+                          !mgr->IsComponentAvailable(TESSDATA_LSTM_RECODER) ||
+                          !mgr->IsComponentAvailable(TESSDATA_LSTM_UNICHARSET);
+  if (!network_->Serialize(fp)) return false;
+  if (include_charsets && !GetUnicharset().save_to_file(fp)) return false;
+  if (!network_str_.Serialize(fp)) return false;
+  if (!fp->Serialize(&training_flags_)) return false;
+  if (!fp->Serialize(&training_iteration_)) return false;
+  if (!fp->Serialize(&sample_iteration_)) return false;
+  if (!fp->Serialize(&null_char_)) return false;
+  if (!fp->Serialize(&adam_beta_)) return false;
+  if (!fp->Serialize(&learning_rate_)) return false;
+  if (!fp->Serialize(&momentum_)) return false;
+  if (include_charsets && IsRecoding() && !recoder_.Serialize(fp)) return false;
+  return true;
+}
+
 // Reads from the given file. Returns false in case of error.
 bool LSTMRecognizer::DeSerialize(const TessdataManager* mgr, TFile* fp) {
   delete network_;

@@ -160,7 +160,7 @@ class Network {
   // state. If in TS_TEMP_DISABLE then the flag is just changed, but if in
   // TS_DISABLED, the deltas in the weight matrices are reinitialized so that a
   // recognizer can be converted back to a trainer.
-  virtual void SetEnableTraining(TrainingState state);
+  virtual void SetEnableTraining(TrainingState state, bool float_mode);
 
   // Sets flags that control the action of the network. See NetworkFlags enum
   // for bit values.
@@ -171,7 +171,7 @@ class Network {
   // Note that randomizer is a borrowed pointer that should outlive the network
   // and should not be deleted by any of the networks.
   // Returns the number of weights initialized.
-  virtual int InitWeights(float range, TRand* randomizer);
+  virtual int InitWeights(float range, TRand* randomizer, bool float_mode);
   // Changes the number of outputs to the outside world to the size of the given
   // code_map. Recursively searches the entire network for Softmax layers that
   // have exactly old_no outputs, and operates only on those, leaving all others
@@ -184,6 +184,9 @@ class Network {
   // all outputs) of the existing weights for all outputs with negative code_map
   // entries. Returns the new number of weights.
   virtual int RemapOutputs(int old_no, const std::vector<int>& code_map) {
+    return 0;
+  }
+  virtual int RemapOutputsFloat(int old_no, const std::vector<int>& code_map) {
     return 0;
   }
 
@@ -222,6 +225,7 @@ class Network {
   // Writes to the given file. Returns false in case of error.
   // Should be overridden by subclasses, but called by their Serialize.
   virtual bool Serialize(TFile* fp) const;
+  virtual bool SerializeFloat(TFile* fp) const;
   // Reads from the given file. Returns false in case of error.
   // Should be overridden by subclasses, but NOT called by their DeSerialize.
   virtual bool DeSerialize(TFile* fp);
@@ -229,6 +233,9 @@ class Network {
   // Updates the weights using the given learning rate, momentum and adam_beta.
   // num_samples is used in the adam computation iff use_adam_ is true.
   virtual void Update(float learning_rate, float momentum, float adam_beta,
+                      int num_samples) {}
+
+  virtual void UpdateFloat(float learning_rate, float momentum, float adam_beta,
                       int num_samples) {}
   // Sums the products of weight updates in *this and other, splitting into
   // positive (same direction) in *same and negative (different direction) in
@@ -266,7 +273,7 @@ class Network {
   }
 
   virtual void ForwardFloat(bool debug, const NetworkIO& input,
-                       const TransposedArray* input_transpose,
+                       const TransposedArray32* input_transpose,
                        NetworkScratch* scratch, NetworkIO* output) {
     tprintf("Must override Network::ForwardFloat for type %d\n", type_);
   }
@@ -280,6 +287,12 @@ class Network {
                         NetworkScratch* scratch,
                         NetworkIO* back_deltas) {
     tprintf("Must override Network::Backward for type %d\n", type_);
+    return false;
+  }
+
+  virtual bool BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                        NetworkScratch* scratch, NetworkIO* back_deltas) {
+    tprintf("Must override Network::BackwardFloat for type %d\n", type_);
     return false;
   }
 
@@ -304,6 +317,7 @@ class Network {
  protected:
   NetworkType type_;          // Type of the derived network class.
   TrainingState training_;    // Are we currently training?
+  bool float_mode_;           // Are we currently using floats for calculation?
   bool needs_to_backprop_;    // This network needs to output back_deltas.
   int32_t network_flags_;     // Behavior control flags in NetworkFlags.
   int32_t ni_;                // Number of input values.

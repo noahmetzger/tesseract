@@ -46,6 +46,7 @@ class Convolve : public Network {
 
   // Writes to the given file. Returns false in case of error.
   bool Serialize(TFile* fp) const override;
+  bool SerializeFloat(TFile* fp) const override;
   // Reads from the given file. Returns false in case of error.
   bool DeSerialize(TFile* fp) override;
 
@@ -56,7 +57,7 @@ class Convolve : public Network {
                NetworkScratch* scratch, NetworkIO* output) override;
 
   void ForwardFloat(bool debug, const NetworkIO& input,
-                    const TransposedArray* input_transpose, NetworkScratch* scratch,
+                    const TransposedArray32* input_transpose, NetworkScratch* scratch,
                     NetworkIO* output) override;
 
   // Runs backward propagation of errors on the deltas line.
@@ -64,6 +65,8 @@ class Convolve : public Network {
   bool Backward(bool debug, const NetworkIO& fwd_deltas,
                 NetworkScratch* scratch,
                 NetworkIO* back_deltas) override;
+  bool BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                NetworkScratch* scratch, NetworkIO* back_deltas) override;
 
  protected:
   // Serialized data.

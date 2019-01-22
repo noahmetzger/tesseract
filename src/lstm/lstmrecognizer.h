@@ -159,6 +159,7 @@ class LSTMRecognizer {
   // Writes to the given file. Returns false in case of error.
   // If mgr contains a unicharset and recoder, then they are not encoded to fp.
   bool Serialize(const TessdataManager* mgr, TFile* fp) const;
+  bool SerializeFloat(const TessdataManager* mgr, TFile* fp) const;
   // Reads from the given file. Returns false in case of error.
   // If mgr contains a unicharset and recoder, then they are taken from there,
   // otherwise, they are part of the serialization in fp.

@@ -88,8 +88,10 @@ LSTMTrainer::LSTMTrainer(FileReader file_reader, FileWriter file_writer,
                          CheckPointReader checkpoint_reader,
                          CheckPointWriter checkpoint_writer,
                          const char* model_base, const char* checkpoint_name,
-                         int debug_interval, int64_t max_memory)
-    : randomly_rotate_(false),
+                         int debug_interval, int64_t max_memory,
+                         bool dp_float_mode)
+    : randomly_rotate_(false), 
+      dp_float_mode_(dp_float_mode),
       training_data_(max_memory),
       file_reader_(file_reader),
       file_writer_(file_writer),
@@ -157,7 +159,12 @@ bool LSTMTrainer::TryLoadingCheckpoint(const char* filename,
   int old_null_char = null_char_;
   SetNullChar();
   // Map the softmax(s) in the network.
-  network_->RemapOutputs(old_recoder.code_range(), code_map);
+  if (!dp_float_mode_) {
+    network_->RemapOutputs(old_recoder.code_range(), code_map);
+  } else {
+    network_->RemapOutputsFloat(old_recoder.code_range(), code_map);
+  }
+  
   tprintf("Previous null char=%d mapped to %d\n", old_null_char, null_char_);
   return true;
 }
@@ -179,7 +186,7 @@ bool LSTMTrainer::InitNetwork(const STRING& network_spec, int append_index,
   SetNullChar();
   if (!NetworkBuilder::InitNetwork(recoder_.code_range(), network_spec,
                                    append_index, net_flags, weight_range,
-                                   &randomizer_, &network_)) {
+                                   &randomizer_, &network_, dp_float_mode_)) {
     return false;
   }
   network_str_ += network_spec;
@@ -473,7 +480,7 @@ bool LSTMTrainer::DeSerialize(const TessdataManager* mgr, TFile* fp) {
     // allow it.
     tprintf("Warning: LSTMTrainer deserialized an LSTMRecognizer!\n");
     learning_iteration_ = 0;
-    network_->SetEnableTraining(TS_ENABLED);
+    network_->SetEnableTraining(TS_ENABLED, dp_float_mode_);
     return true;
   }
   if (!fp->DeSerialize(&prev_sample_iteration_)) return false;
@@ -779,9 +786,16 @@ Trainability LSTMTrainer::TrainOnLine(const ImageData* trainingdata,
       (trainable != PERFECT ||
        training_iteration() >
            last_perfect_training_iteration_ + perfect_delay_)) {
-    network_->Backward(debug, targets, &scratch_space_, &bp_deltas);
-    network_->Update(learning_rate_, batch ? -1.0f : momentum_, adam_beta_,
-                     training_iteration_ + 1);
+    if (!dp_float_mode_) {
+      network_->Backward(debug, targets, &scratch_space_, &bp_deltas);
+      network_->Update(learning_rate_, batch ? -1.0f : momentum_, adam_beta_,
+                       training_iteration_ + 1);
+    } else {
+      network_->BackwardFloat(debug, targets, &scratch_space_, &bp_deltas);
+      network_->UpdateFloat(learning_rate_, batch ? -1.0f : momentum_, adam_beta_,
+                       training_iteration_ + 1);
+    }
+    
   }
 #ifndef GRAPHICS_DISABLED
   if (debug_interval_ == 1 && debug_win_ != nullptr) {
@@ -842,7 +856,7 @@ Trainability LSTMTrainer::PrepareForBackward(const ImageData* trainingdata,
   NetworkIO inputs;
   bool invert = trainingdata->boxes().empty();
   if (!RecognizeLine(*trainingdata, invert, debug, invert, upside_down,
-                     &image_scale, &inputs, fwd_outputs)) {
+                     &image_scale, &inputs, fwd_outputs, dp_float_mode_)) {
     tprintf("Image not trainable\n");
     return UNENCODABLE;
   }
@@ -930,9 +944,14 @@ bool LSTMTrainer::SaveTraineddata(const STRING& filename) {
 void LSTMTrainer::SaveRecognitionDump(GenericVector<char>* data) const {
   TFile fp;
   fp.OpenWrite(data);
-  network_->SetEnableTraining(TS_TEMP_DISABLE);
-  ASSERT_HOST(LSTMRecognizer::Serialize(&mgr_, &fp));
-  network_->SetEnableTraining(TS_RE_ENABLE);
+  network_->SetEnableTraining(TS_TEMP_DISABLE, dp_float_mode_);
+  if (dp_float_mode_) {
+    ASSERT_HOST(LSTMRecognizer::SerializeFloat(&mgr_, &fp));
+  } else {
+    ASSERT_HOST(LSTMRecognizer::Serialize(&mgr_, &fp));
+  }
+  
+  network_->SetEnableTraining(TS_RE_ENABLE, dp_float_mode_);
 }
 
 // Returns a suitable filename for a training dump, based on the model_base_,

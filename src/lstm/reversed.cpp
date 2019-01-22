@@ -62,7 +62,7 @@ void Reversed::Forward(bool debug, const NetworkIO& input,
 }
 
 void Reversed::ForwardFloat(bool debug, const NetworkIO& input,
-                            const TransposedArray* input_transpose,
+                            const TransposedArray32* input_transpose,
                             NetworkScratch* scratch, NetworkIO* output) {
   NetworkScratch::IO rev_input(input, scratch);
   ReverseData(input, rev_input);
@@ -80,6 +80,18 @@ bool Reversed::Backward(bool debug, const NetworkIO& fwd_deltas,
   ReverseData(fwd_deltas, rev_input);
   NetworkScratch::IO rev_output(fwd_deltas, scratch);
   if (stack_[0]->Backward(debug, *rev_input, scratch, rev_output)) {
+    ReverseData(*rev_output, back_deltas);
+    return true;
+  }
+  return false;
+}
+
+bool Reversed::BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                        NetworkScratch* scratch, NetworkIO* back_deltas) {
+  NetworkScratch::IO rev_input(fwd_deltas, scratch);
+  ReverseData(fwd_deltas, rev_input);
+  NetworkScratch::IO rev_output(fwd_deltas, scratch);
+  if (stack_[0]->BackwardFloat(debug, *rev_input, scratch, rev_output)) {
     ReverseData(*rev_output, back_deltas);
     return true;
   }

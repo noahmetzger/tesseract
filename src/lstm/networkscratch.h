@@ -239,6 +239,38 @@ class NetworkScratch {
     NetworkScratch* scratch_space_;
   };  // class GradientStore
 
+  // Class that acts like a 2-D array of float, yet actually uses space
+  // from the source NetworkScratch, and knows how to unstack the borrowed
+  // array on destruction.
+  class GradientStore32 {
+   public:
+    // Default constructor is for arrays. Use Init to setup.
+    GradientStore32() : array32_(nullptr), scratch_space_(nullptr) {}
+    ~GradientStore32() {
+      if (scratch_space_ != nullptr)
+        scratch_space_->array_stack32_.Return(array32_);
+    }
+
+    void Init(int size1, int size2, NetworkScratch* scratch) {
+      if (scratch_space_ != nullptr && array32_ != nullptr)
+        scratch_space_->array_stack32_.Return(array32_);
+      scratch_space_ = scratch;
+      array32_ = scratch_space_->array_stack32_.Borrow();
+      array32_->Resize(size1, size2, 0.0);
+    }
+
+    // Accessors to get to the underlying TransposedArray.
+    TransposedArray32* get() const { return array32_; }
+    const TransposedArray32& operator*() const { return *array32_; }
+
+   private:
+    // Array borrowed from the scratch space. Use Return to free it.
+    TransposedArray32* array32_;
+    // The source scratch_space_. Borrowed pointer, used to free the
+    // vector. Don't delete!
+    NetworkScratch* scratch_space_;
+  };  // class GradientStore
+
   // Class that does the work of holding a stack of objects, a stack pointer
   // and a vector of in-use flags, so objects can be returned out of order.
   // It is safe to attempt to Borrow/Return in multiple threads.
@@ -289,6 +321,8 @@ class NetworkScratch {
   Stack<GenericVector<double> > vec_stack_;
   Stack<GenericVector<float> > vec_stack32_;
   Stack<TransposedArray> array_stack_;
+  Stack<TransposedArray32> array_stack32_;
+
 };
 
 }  // namespace tesseract.

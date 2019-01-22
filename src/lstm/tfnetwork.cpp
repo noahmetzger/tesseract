@@ -50,6 +50,17 @@ bool TFNetwork::Serialize(TFile* fp) const {
   return true;
 }
 
+bool TFNetwork::SerializeFloat(TFile* fp) const {
+  if (!Network::SerializeFloat(fp)) return false;
+  string proto_str;
+  model_proto_.SerializeToString(&proto_str);
+  GenericVector<char> data;
+  data.resize_no_init(proto_str.size());
+  memcpy(&data[0], proto_str.data(), proto_str.size());
+  if (!data.Serialize(fp)) return false;
+  return true;
+}
+
 // Reads from the given file. Returns false in case of error.
 // Should be overridden by subclasses, but NOT called by their DeSerialize.
 bool TFNetwork::DeSerialize(TFile* fp) {

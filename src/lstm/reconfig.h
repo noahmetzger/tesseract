@@ -56,6 +56,7 @@ class Reconfig : public Network {
 
   // Writes to the given file. Returns false in case of error.
   bool Serialize(TFile* fp) const override;
+  bool SerializeFloat(TFile* fp) const override;
   // Reads from the given file. Returns false in case of error.
   bool DeSerialize(TFile* fp) override;
 

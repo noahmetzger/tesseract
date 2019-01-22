@@ -252,6 +252,10 @@ inline void AccumulateVector(int n, const double* src, double* dest) {
   for (int i = 0; i < n; ++i) dest[i] += src[i];
 }
 
+inline void AccumulateVector(int n, const float* src, float* dest) {
+  for (int i = 0; i < n; ++i) dest[i] += src[i];
+}
+
 // Multiplies n values of inout in-place element-wise by the given src vector.
 inline void MultiplyVectorsInPlace(int n, const double* src, double* inout) {
   for (int i = 0; i < n; ++i) inout[i] *= src[i];
@@ -280,6 +284,14 @@ inline void MultiplyAccumulate(int n, const float* u, const float* v,
 inline void SumVectors(int n, const double* v1, const double* v2,
                        const double* v3, const double* v4, const double* v5,
                        double* sum) {
+  for (int i = 0; i < n; ++i) {
+    sum[i] = v1[i] + v2[i] + v3[i] + v4[i] + v5[i];
+  }
+}
+
+inline void SumVectors(int n, const float* v1, const float* v2,
+                       const float* v3, const float* v4, const float* v5,
+                       float* sum) {
   for (int i = 0; i < n; ++i) {
     sum[i] = v1[i] + v2[i] + v3[i] + v4[i] + v5[i];
   }

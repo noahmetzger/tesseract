@@ -53,6 +53,11 @@ bool Reconfig::Serialize(TFile* fp) const {
          fp->Serialize(&y_scale_);
 }
 
+bool Reconfig::SerializeFloat(TFile* fp) const {
+  return Network::SerializeFloat(fp) && fp->Serialize(&x_scale_) &&
+         fp->Serialize(&y_scale_);
+}
+
 // Reads from the given file. Returns false in case of error.
 bool Reconfig::DeSerialize(TFile* fp) {
   if (!fp->DeSerialize(&x_scale_)) return false;

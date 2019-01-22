@@ -63,6 +63,8 @@ STRING_PARAM_FLAG(old_traineddata, "",
                   " character set that is to be replaced");
 BOOL_PARAM_FLAG(randomly_rotate, false,
                 "Train OSD and randomly turn training samples upside-down");
+BOOL_PARAM_FLAG(dp_float_mode, true,
+                "Uses 32bit float instead of double for the dotproducts");
 
 // Number of training images to train between calls to MaintainCheckpoints.
 const int kNumPagesPerBatch = 100;
@@ -106,7 +108,7 @@ int main(int argc, char **argv) {
   tesseract::LSTMTrainer trainer(
       nullptr, nullptr, nullptr, nullptr, FLAGS_model_output.c_str(),
       checkpoint_file.c_str(), FLAGS_debug_interval,
-      static_cast<int64_t>(FLAGS_max_image_MB) * 1048576);
+      static_cast<int64_t>(FLAGS_max_image_MB) * 1048576, FLAGS_dp_float_mode);
   trainer.InitCharSet(FLAGS_traineddata.c_str());
 
   // Reading something from an existing model doesn't require many flags,

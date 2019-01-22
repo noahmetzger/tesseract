@@ -252,6 +252,7 @@ class NetworkIO {
                      int num_features);
   // Transposes the float part of *this into dest.
   void Transpose(TransposedArray* dest) const;
+  void Transpose(TransposedArray32* dest) const;
 
   // Clips the content of a single time-step to +/-range.
   void ClipVector(int t, float range);
@@ -280,12 +281,47 @@ class NetworkIO {
       }
     }
   }
+  template <class Func>
+  void FuncMultiply(const NetworkIO& v_io, int t, float* product) {
+    Func f;
+    ASSERT_HOST(!int_mode_);
+    ASSERT_HOST(!v_io.int_mode_);
+    int dim = f_.dim2();
+    if (int_mode_) {
+      const int8_t* u = i_[t];
+      const int8_t* v = v_io.i_[t];
+      for (int i = 0; i < dim; ++i) {
+        product[i] = f(u[i] / static_cast<float>(INT8_MAX)) * v[i] /
+                     static_cast<float>(INT8_MAX);
+      }
+    } else {
+      const float* u = f_[t];
+      const float* v = v_io.f_[t];
+      for (int i = 0; i < dim; ++i) {
+        product[i] = f(u[i]) * v[i];
+      }
+    }
+  }
   // Applies Func to *this (u) at u_t, and multiplies the result by v[v_t] * w,
   // component-wise, putting the product in *product.
   // All NetworkIOs are assumed to be float.
   template <class Func>
   void FuncMultiply3(int u_t, const NetworkIO& v_io, int v_t, const double* w,
                      double* product) const {
+    ASSERT_HOST(!int_mode_);
+    ASSERT_HOST(!v_io.int_mode_);
+    Func f;
+    const float* u = f_[u_t];
+    const float* v = v_io.f_[v_t];
+    int dim = f_.dim2();
+    for (int i = 0; i < dim; ++i) {
+      product[i] = f(u[i]) * v[i] * w[i];
+    }
+  }
+
+  template <class Func>
+  void FuncMultiply3(int u_t, const NetworkIO& v_io, int v_t, const float* w,
+                     float* product) const {
     ASSERT_HOST(!int_mode_);
     ASSERT_HOST(!v_io.int_mode_);
     Func f;
@@ -312,12 +348,42 @@ class NetworkIO {
       product[i] += f(u[i]) * v[i] * w[i];
     }
   }
+
+  template <class Func>
+  void FuncMultiply3Add(const NetworkIO& v_io, int t, const float* w,
+                        float* product) const {
+    ASSERT_HOST(!int_mode_);
+    ASSERT_HOST(!v_io.int_mode_);
+    Func f;
+    const float* u = f_[t];
+    const float* v = v_io.f_[t];
+    int dim = f_.dim2();
+    for (int i = 0; i < dim; ++i) {
+      product[i] += f(u[i]) * v[i] * w[i];
+    }
+  }
+
   // Applies Func1 to *this (u), Func2 to v, and multiplies the result by w,
   // component-wise, putting the product in product, all at timestep t, except
   // w, which is a simple array. All NetworkIOs are assumed to be float.
   template <class Func1, class Func2>
   void Func2Multiply3(const NetworkIO& v_io, int t, const double* w,
                       double* product) const {
+    ASSERT_HOST(!int_mode_);
+    ASSERT_HOST(!v_io.int_mode_);
+    Func1 f;
+    Func2 g;
+    const float* u = f_[t];
+    const float* v = v_io.f_[t];
+    int dim = f_.dim2();
+    for (int i = 0; i < dim; ++i) {
+      product[i] = f(u[i]) * g(v[i]) * w[i];
+    }
+  }
+
+  template <class Func1, class Func2>
+  void Func2Multiply3(const NetworkIO& v_io, int t, const float* w,
+                      float* product) const {
     ASSERT_HOST(!int_mode_);
     ASSERT_HOST(!v_io.int_mode_);
     Func1 f;

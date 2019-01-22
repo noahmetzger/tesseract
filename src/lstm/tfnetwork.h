@@ -58,6 +58,7 @@ class TFNetwork : public Network {
   // Writes to the given file. Returns false in case of error.
   // Should be overridden by subclasses, but called by their Serialize.
   bool Serialize(TFile* fp) const override;
+  bool SerializeFloat(TFile* fp) const override;
   // Reads from the given file. Returns false in case of error.
   // Should be overridden by subclasses, but NOT called by their DeSerialize.
   bool DeSerialize(TFile* fp) override;

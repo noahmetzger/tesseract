@@ -94,7 +94,7 @@ class LSTMTrainer : public LSTMRecognizer {
               CheckPointReader checkpoint_reader,
               CheckPointWriter checkpoint_writer,
               const char* model_base, const char* checkpoint_name,
-              int debug_interval, int64_t max_memory);
+              int debug_interval, int64_t max_memory, bool dp_float_mode);
   virtual ~LSTMTrainer();
 
   // Tries to deserialize a trainer from the given file and silently returns
@@ -411,6 +411,8 @@ class LSTMTrainer : public LSTMRecognizer {
   STRING checkpoint_name_;
   // Training data.
   bool randomly_rotate_;
+  //datatype of dotproduct
+  bool dp_float_mode_;
   DocumentCache training_data_;
   // Name to use when saving best_trainer_.
   STRING best_model_name_;

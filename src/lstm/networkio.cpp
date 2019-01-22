@@ -1000,6 +1000,12 @@ void NetworkIO::Transpose(TransposedArray* dest) const {
   for (int t = 0; t < width; ++t) dest->WriteStrided(t, f_[t]);
 }
 
+void NetworkIO::Transpose(TransposedArray32* dest) const {
+  int width = Width();
+  dest->ResizeNoInit(NumFeatures(), width);
+  for (int t = 0; t < width; ++t) dest->WriteStrided(t, f_[t]);
+}
+
 // Clips the content of a single time-step to +/-range.
 void NetworkIO::ClipVector(int t, float range) {
   ASSERT_HOST(!int_mode_);

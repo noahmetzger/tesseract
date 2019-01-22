@@ -59,6 +59,36 @@ class TransposedArray : public GENERIC_2D_ARRAY<double> {
   }
 };  // class TransposedArray
 
+class TransposedArray32 : public GENERIC_2D_ARRAY<float> {
+ public:
+  // Copies the whole input transposed, converted to double, into *this.
+  void Transpose(const GENERIC_2D_ARRAY<float>& input);
+  // Writes a vector of data representing a timestep (gradients or sources).
+  // The data is assumed to be of size1 in size (the strided dimension).
+  virtual ~TransposedArray32();
+  void WriteStrided(int t, const float* data) {
+    int size1 = dim1();
+    for (int i = 0; i < size1; ++i) put(i, t, data[i]);
+  }
+  void WriteStrided(int t, const double* data) {
+    int size1 = dim1();
+    for (int i = 0; i < size1; ++i) put(i, t, data[i]);
+  }
+  // Prints the first and last num elements of the un-transposed array.
+  void PrintUnTransposed(int num) {
+    int num_features = dim1();
+    int width = dim2();
+    for (int y = 0; y < num_features; ++y) {
+      for (int t = 0; t < width; ++t) {
+        if (num == 0 || t < num || t + num >= width) {
+          tprintf(" %g", (*this)(y, t));
+        }
+      }
+      tprintf("\n");
+    }
+  }
+};  // class TransposedArray32
+
 // Generic weight matrix for network layers. Can store the matrix as either
 // an array of floats or int8_t. Provides functions to compute the forward and
 // backward steps with the matrix and updates to the weights.
@@ -72,12 +102,16 @@ class WeightMatrix {
   // a forward operation.
   int InitWeightsFloat(int no, int ni, bool use_adam, float weight_range,
                        TRand* randomizer);
+
+  int InitWeightsFloat32(int no, int ni, bool use_adam, float weight_range,
+                       TRand* randomizer);
   // Changes the number of outputs to the size of the given code_map, copying
   // the old weight matrix entries for each output from code_map[output] where
   // non-negative, and uses the mean (over all outputs) of the existing weights
   // for all outputs with negative code_map entries. Returns the new number of
   // weights.
   int RemapOutputs(const std::vector<int>& code_map);
+  int RemapOutputsFloat(const std::vector<int>& code_map);
 
   // Converts a float network to an int network. Each set of input weights that
   // corresponds to a single output weight is converted independently:
@@ -107,11 +141,14 @@ class WeightMatrix {
   // Allocates any needed memory for running Backward, and zeroes the deltas,
   // thus eliminating any existing momentum.
   void InitBackward();
+  void InitBackward32();
 
   // Writes to the given file. Returns false in case of error.
   bool Serialize(bool training, TFile* fp) const;
+  bool SerializeFloat(bool training, TFile* fp) const;
   // Reads from the given file. Returns false in case of error.
   bool DeSerialize(bool training, TFile* fp);
+  bool DeSerializeFloat(bool training, TFile* fp);
   // As DeSerialize, but reads an old (float) format WeightMatrix for
   // backward compatibility.
   bool DeSerializeOld(bool training, TFile* fp);
@@ -133,15 +170,20 @@ class WeightMatrix {
   // The last result is discarded, as v is assumed to have an imaginary
   // last value of 1, as with MatrixDotVector.
   void VectorDotMatrix(const double* u, double* v) const;
+  void VectorDotMatrix(const float* u, float* v) const;
   // Fills dw_[i][j] with the dot product u[i][] . v[j][], using elements
   // from u and v, starting with u[i][offset] and v[j][offset].
   // Note that (matching MatrixDotVector) v[last][] is missing, presumed 1.0.
   // Runs parallel if requested. Note that inputs must be transposed.
   void SumOuterTransposed(const TransposedArray& u, const TransposedArray& v,
                           bool parallel);
+  void SumOuterTransposed(const TransposedArray32& u, const TransposedArray32& v,
+                          bool parallel);
   // Updates the weights using the given learning rate, momentum and adam_beta.
   // num_samples is used in the Adam correction factor.
   void Update(double learning_rate, double momentum, double adam_beta,
+              int num_samples);
+  void UpdateFloat(float learning_rate, float momentum, float adam_beta,
               int num_samples);
   // Adds the dw_ in other to the dw_ is *this.
   void AddDeltas(const WeightMatrix& other);
@@ -155,6 +197,9 @@ class WeightMatrix {
 
   static void FloatToDouble(const GENERIC_2D_ARRAY<float>& wf,
                             GENERIC_2D_ARRAY<double>* wd);
+
+  void prepareSerialize(const GENERIC_2D_ARRAY<float>& wf,
+                            const GENERIC_2D_ARRAY<double>* wd) const;
 
   static void DoubleToFloat(GENERIC_2D_ARRAY<double>& wf,
                             GENERIC_2D_ARRAY<float>* wd);
@@ -181,6 +226,7 @@ class WeightMatrix {
   GENERIC_2D_ARRAY<float> wf32_;
   // Transposed copy of wf_, used only for Backward, and set with each Update.
   TransposedArray wf_t_;
+  TransposedArray32 wf_t32_;
   // Which of wf_ and wi_ are we actually using.
   bool int_mode_;
   // True if we are running adam in this weight matrix.
@@ -191,7 +237,9 @@ class WeightMatrix {
   // Weight deltas. dw_ is the new delta, and updates_ the momentum-decaying
   // amount to be added to wf_/wi_.
   GENERIC_2D_ARRAY<double> dw_;
+  GENERIC_2D_ARRAY<float> dw32_;
   GENERIC_2D_ARRAY<double> updates_;
+  GENERIC_2D_ARRAY<float> updates32_;
   // Iff use_adam_, the sum of squares of dw_. The number of samples is
   // given to Update(). Serialized iff use_adam_.
   GENERIC_2D_ARRAY<double> dw_sq_sum_;

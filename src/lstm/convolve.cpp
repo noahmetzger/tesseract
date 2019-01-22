@@ -36,6 +36,11 @@ bool Convolve::Serialize(TFile* fp) const {
          fp->Serialize(&half_x_) &&
          fp->Serialize(&half_y_);
 }
+bool Convolve::SerializeFloat(TFile* fp) const {
+  return Network::SerializeFloat(fp) &&
+         fp->Serialize(&half_x_) &&
+         fp->Serialize(&half_y_);
+}
 
 // Reads from the given file. Returns false in case of error.
 bool Convolve::DeSerialize(TFile* fp) {
@@ -80,7 +85,7 @@ void Convolve::Forward(bool debug, const NetworkIO& input,
 }
 
 void Convolve::ForwardFloat(bool debug, const NetworkIO& input,
-                       const TransposedArray* input_transpose,
+                       const TransposedArray32* input_transpose,
                        NetworkScratch* scratch, NetworkIO* output) {
   output->Resize(input, no_);
   int y_scale = 2 * half_y_ + 1;
@@ -144,4 +149,33 @@ bool Convolve::Backward(bool debug, const NetworkIO& fwd_deltas,
   return true;
 }
 
+bool Convolve::BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                        NetworkScratch* scratch, NetworkIO* back_deltas) {
+  back_deltas->Resize(fwd_deltas, ni_);
+  NetworkScratch::IO delta_sum;
+  delta_sum.ResizeFloat(fwd_deltas, ni_, scratch);
+  delta_sum->Zero();
+  int y_scale = 2 * half_y_ + 1;
+  StrideMap::Index src_index(fwd_deltas.stride_map());
+  do {
+    // Stack x_scale groups of y_scale * ni_ inputs together.
+    int t = src_index.t();
+    int out_ix = 0;
+    for (int x = -half_x_; x <= half_x_; ++x, out_ix += y_scale * ni_) {
+      StrideMap::Index x_index(src_index);
+      if (x_index.AddOffset(x, FD_WIDTH)) {
+        int out_iy = out_ix;
+        for (int y = -half_y_; y <= half_y_; ++y, out_iy += ni_) {
+          StrideMap::Index y_index(x_index);
+          if (y_index.AddOffset(y, FD_HEIGHT)) {
+            fwd_deltas.AddTimeStepPart(t, out_iy, ni_,
+                                       delta_sum->f(y_index.t()));
+          }
+        }
+      }
+    }
+  } while (src_index.Increment());
+  back_deltas->CopyAll(*delta_sum);
+  return true;
+}
 }  // namespace tesseract.

@@ -35,6 +35,7 @@ static inline double log2(double n) {
 const int kAdamCorrectionIterations = 200000;
 // Epsilon in Adam to prevent division by zero.
 const double kAdamEpsilon = 1e-8;
+const float kAdamEpsilon32 = 1e-8;
 
 // Computes matrix.vector v = Wu.
 // u is of size W.dim2() - add_bias_fwd and the output v is of size
@@ -66,10 +67,18 @@ void TransposedArray::Transpose(const GENERIC_2D_ARRAY<double>& input) {
   for (int t = 0; t < width; ++t) WriteStrided(t, input[t]);
 }
 
+void TransposedArray32::Transpose(const GENERIC_2D_ARRAY<float>& input) {
+  int width = input.dim1();
+  int num_features = input.dim2();
+  ResizeNoInit(num_features, width);
+  for (int t = 0; t < width; ++t) WriteStrided(t, input[t]);
+}
+
 // Destructor.
 // It is defined here, so the compiler can create a single vtable
 // instead of weak vtables in every compilation unit.
 TransposedArray::~TransposedArray() = default;
+TransposedArray32::~TransposedArray32() = default;
 
 // Sets up the network for training. Initializes weights using weights of
 // scale `range` picked according to the random number generator `randomizer`.
@@ -86,6 +95,22 @@ int WeightMatrix::InitWeightsFloat(int no, int ni, bool use_adam,
   }
   use_adam_ = use_adam;
   InitBackward();
+  return ni * no;
+}
+
+int WeightMatrix::InitWeightsFloat32(int no, int ni, bool use_adam,
+                                   float weight_range, TRand* randomizer) {
+  int_mode_ = false;
+  wf32_.Resize(no, ni, 0.0);
+  if (randomizer != nullptr) {
+    for (int i = 0; i < no; ++i) {
+      for (int j = 0; j < ni; ++j) {
+        wf32_[i][j] = randomizer->SignedRand(weight_range);
+      }
+    }
+  }
+  use_adam_ = use_adam;
+  InitBackward32();
   return ni * no;
 }
 
@@ -111,6 +136,27 @@ int WeightMatrix::RemapOutputs(const std::vector<int>& code_map) {
     int src = code_map[dest];
     const double* src_data = src >= 0 ? old_wf[src] : means.data();
     memcpy(wf_[dest], src_data, ni * sizeof(*src_data));
+  }
+  return ni * new_no;
+}
+
+int WeightMatrix::RemapOutputsFloat(const std::vector<int>& code_map) {
+  GENERIC_2D_ARRAY<float> old_wf(wf32_);
+  int old_no = wf32_.dim1();
+  int new_no = code_map.size();
+  int ni = wf32_.dim2();
+  std::vector<float> means(ni, 0.0);
+  for (int c = 0; c < old_no; ++c) {
+    const float* weights = wf32_[c];
+    for (int i = 0; i < ni; ++i) means[i] += weights[i];
+  }
+  for (float& mean : means) mean /= old_no;
+  wf32_.ResizeNoInit(new_no, ni);
+  InitBackward32();
+  for (int dest = 0; dest < new_no; ++dest) {
+    int src = code_map[dest];
+    const float* src_data = src >= 0 ? old_wf[src] : means.data();
+    memcpy(wf32_[dest], src_data, ni * sizeof(*src_data));
   }
   return ni * new_no;
 }
@@ -159,7 +205,15 @@ void WeightMatrix::InitBackward() {
   if (use_adam_) dw_sq_sum_.Resize(no, ni, 0.0);
 }
 
-// Flag on mode to indicate that this weightmatrix uses int8_t.
+void WeightMatrix::InitBackward32() {
+  int no = int_mode_ ? wi_.dim1() : wf32_.dim1();
+  int ni = int_mode_ ? wi_.dim2() : wf32_.dim2();
+  dw32_.Resize(no, ni, 0.0);
+  updates32_.Resize(no, ni, 0.0);
+  wf_t32_.Transpose(wf32_);
+  if (use_adam_) dw_sq_sum32_.Resize(no, ni, 0.0);
+}
+    // Flag on mode to indicate that this weightmatrix uses int8_t.
 const int kInt8Flag = 1;
 // Flag on mode to indicate that this weightmatrix uses adam.
 const int kAdamFlag = 4;
@@ -186,6 +240,23 @@ bool WeightMatrix::Serialize(bool training, TFile* fp) const {
   return true;
 }
 
+bool WeightMatrix::SerializeFloat(bool training, TFile* fp) const {
+  // For backward compatibility, add kDoubleFlag to mode to indicate the doubles
+  // format, without errs, so we can detect and read old format weight matrices.
+  uint8_t mode =
+      (int_mode_ ? kInt8Flag : 0) | (use_adam_ ? kAdamFlag : 0) | kDoubleFlag;
+  if (!fp->Serialize(&mode)) return false;
+  if (int_mode_) {
+    if (!wi_.Serialize(fp)) return false;
+    if (!scales_.Serialize(fp)) return false;
+  } else {
+    if (!wf32_.Serialize(fp)) return false;
+    if (training && !updates32_.Serialize(fp)) return false;
+    if (training && use_adam_ && !dw_sq_sum32_.Serialize(fp)) return false;
+  }
+  return true;
+}
+
 // Reads from the given file. Returns false in case of error.
 
 bool WeightMatrix::DeSerialize(bool training, TFile* fp) {
@@ -207,6 +278,28 @@ bool WeightMatrix::DeSerialize(bool training, TFile* fp) {
       InitBackward();
       if (!updates_.DeSerialize(fp)) return false;
       if (use_adam_ && !dw_sq_sum_.DeSerialize(fp)) return false;
+    }
+  }
+  return true;
+}
+
+bool WeightMatrix::DeSerializeFloat(bool training, TFile* fp) {
+  uint8_t mode;
+  if (!fp->DeSerialize(&mode)) return false;
+  int_mode_ = (mode & kInt8Flag) != 0;
+  use_adam_ = (mode & kAdamFlag) != 0;
+  if ((mode & kDoubleFlag) == 0) return DeSerializeOld(training, fp);
+  if (int_mode_) {
+    if (!wi_.DeSerialize(fp)) return false;
+    if (!scales_.DeSerialize(fp)) return false;
+    multiplier_.reset(IntSimdMatrix::GetFastestMultiplier());
+    multiplier_->Init(wi_);
+  } else {
+    if (!wf32_.DeSerialize(fp)) return false;
+    if (training) {
+      InitBackward32();
+      if (!updates32_.DeSerialize(fp)) return false;
+      if (use_adam_ && !dw_sq_sum32_.DeSerialize(fp)) return false;
     }
   }
   return true;
@@ -288,6 +381,11 @@ void WeightMatrix::VectorDotMatrix(const double* u, double* v) const {
   MatrixDotVectorInternal(wf_t_, false, true, u, v);
 }
 
+void WeightMatrix::VectorDotMatrix(const float* u, float* v) const {
+  ASSERT_HOST(!int_mode_);
+  MatrixDotVectorInternal(wf_t32_, false, true, u, v);
+}
+
 // Fills dw_[i][j] with the dot product u[i][] . v[j][], using elements from
 // u and v. In terms of the neural network, u is the gradients and v is the
 // inputs.
@@ -320,6 +418,33 @@ void WeightMatrix::SumOuterTransposed(const TransposedArray& u,
   }
 }
 
+void WeightMatrix::SumOuterTransposed(const TransposedArray32& u,
+                                      const TransposedArray32& v,
+                                      bool in_parallel) {
+  ASSERT_HOST(!int_mode_);
+  int num_outputs = dw32_.dim1();
+  ASSERT_HOST(u.dim1() == num_outputs);
+  ASSERT_HOST(u.dim2() == v.dim2());
+  int num_inputs = dw32_.dim2() - 1;
+  int num_samples = u.dim2();
+  // v is missing the last element in dim1.
+  ASSERT_HOST(v.dim1() == num_inputs);
+#ifdef _OPENMP
+#  pragma omp parallel for num_threads(4) if (in_parallel)
+#endif
+  for (int i = 0; i < num_outputs; ++i) {
+    float* dwi = dw32_[i];
+    const float* ui = u[i];
+    for (int j = 0; j < num_inputs; ++j) {
+      dwi[j] = DotProductFloat(ui, v[j], num_samples);
+    }
+    // The last element of v is missing, presumed 1.0f.
+    double total = 0.0;
+    for (int k = 0; k < num_samples; ++k) total += ui[k];
+    dwi[num_inputs] = total;
+  }
+}
+
 // Updates the weights using the given learning rate and momentum.
 // num_samples is the quotient to be used in the adam computation iff
 // use_adam_ is true.
@@ -343,6 +468,28 @@ void WeightMatrix::Update(double learning_rate, double momentum,
     if (momentum >= 0.0) updates_ *= momentum;
   }
   wf_t_.Transpose(wf_);
+}
+
+void WeightMatrix::UpdateFloat(float learning_rate, float momentum,
+                          float adam_beta, int num_samples) {
+  ASSERT_HOST(!int_mode_);
+  if (use_adam_ && num_samples > 0 && num_samples < kAdamCorrectionIterations) {
+    learning_rate *= sqrt(1.0f - pow(adam_beta, num_samples));
+    learning_rate /= 1.0f - pow(momentum, num_samples);
+  }
+  if (use_adam_ && num_samples > 0 && momentum > 0.0f) {
+    dw_sq_sum32_.SumSquares(dw32_, adam_beta);
+    dw32_ *= learning_rate * (1.0 - momentum);
+    updates32_ *= momentum;
+    updates32_ += dw32_;
+    wf32_.AdamUpdate(updates32_, dw_sq_sum32_, learning_rate * kAdamEpsilon32);
+  } else {
+    dw32_ *= learning_rate;
+    updates32_ += dw32_;
+    if (momentum > 0.0f) wf32_ += updates32_;
+    if (momentum >= 0.0f) updates32_ *= momentum;
+  }
+  wf_t32_.Transpose(wf32_);
 }
 
 // Adds the dw_ in other to the dw_ is *this.

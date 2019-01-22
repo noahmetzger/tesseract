@@ -50,6 +50,7 @@ class Input : public Network {
   // Writes to the given file. Returns false in case of error.
   // Should be overridden by subclasses, but called by their Serialize.
   bool Serialize(TFile* fp) const override;
+  bool SerializeFloat(TFile* fp) const override;
   // Reads from the given file. Returns false in case of error.
   bool DeSerialize(TFile* fp) override;
 
@@ -72,7 +73,7 @@ class Input : public Network {
                NetworkScratch* scratch, NetworkIO* output) override;
 
   void ForwardFloat(bool debug, const NetworkIO& input,
-                    const TransposedArray* input_transpose, NetworkScratch* scratch,
+                    const TransposedArray32* input_transpose, NetworkScratch* scratch,
                     NetworkIO* output) override;
 
   // Runs backward propagation of errors on the deltas line.
@@ -80,6 +81,9 @@ class Input : public Network {
   bool Backward(bool debug, const NetworkIO& fwd_deltas,
                 NetworkScratch* scratch,
                 NetworkIO* back_deltas) override;
+  bool BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                NetworkScratch* scratch, NetworkIO* back_deltas) override;
+
   // Creates and returns a Pix of appropriate size for the network from the
   // image_data. If non-null, *image_scale returns the image scale factor used.
   // Returns nullptr on error.

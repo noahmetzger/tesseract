@@ -42,6 +42,10 @@ bool Input::Serialize(TFile* fp) const {
   return Network::Serialize(fp) && shape_.Serialize(fp);
 }
 
+bool Input::SerializeFloat(TFile* fp) const {
+  return Network::SerializeFloat(fp) && shape_.Serialize(fp);
+}
+
 // Reads from the given file. Returns false in case of error.
 bool Input::DeSerialize(TFile* fp) {
   return shape_.DeSerialize(fp);
@@ -69,7 +73,7 @@ void Input::Forward(bool debug, const NetworkIO& input,
 }
 
 void Input::ForwardFloat(bool debug, const NetworkIO& input,
-                         const TransposedArray* input_transpose,
+                         const TransposedArray32* input_transpose,
                          NetworkScratch* scratch, NetworkIO* output) {
   *output = input;
 }
@@ -80,6 +84,12 @@ bool Input::Backward(bool debug, const NetworkIO& fwd_deltas,
                      NetworkScratch* scratch,
                      NetworkIO* back_deltas) {
   tprintf("Input::Backward should not be called!!\n");
+  return false;
+}
+
+bool Input::BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                     NetworkScratch* scratch, NetworkIO* back_deltas) {
+  tprintf("Input::BackwardFloat should not be called!!\n");
   return false;
 }
 

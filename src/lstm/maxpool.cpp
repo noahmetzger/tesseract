@@ -66,7 +66,7 @@ void Maxpool::Forward(bool debug, const NetworkIO& input,
   } while (dest_index.Increment());
 }
 void Maxpool::ForwardFloat(bool debug, const NetworkIO& input,
-                      const TransposedArray* input_transpose,
+                      const TransposedArray32* input_transpose,
                       NetworkScratch* scratch, NetworkIO* output) {
   output->ResizeScaled(input, x_scale_, y_scale_, no_);
   maxes_.ResizeNoInit(output->Width(), ni_);
@@ -102,6 +102,13 @@ void Maxpool::ForwardFloat(bool debug, const NetworkIO& input,
 bool Maxpool::Backward(bool debug, const NetworkIO& fwd_deltas,
                        NetworkScratch* scratch,
                        NetworkIO* back_deltas) {
+  back_deltas->ResizeToMap(fwd_deltas.int_mode(), back_map_, ni_);
+  back_deltas->MaxpoolBackward(fwd_deltas, maxes_);
+  return true;
+}
+
+bool Maxpool::BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                       NetworkScratch* scratch, NetworkIO* back_deltas) {
   back_deltas->ResizeToMap(fwd_deltas.int_mode(), back_map_, ni_);
   back_deltas->MaxpoolBackward(fwd_deltas, maxes_);
   return true;

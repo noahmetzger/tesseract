@@ -49,7 +49,7 @@ class Maxpool : public Reconfig {
                NetworkScratch* scratch, NetworkIO* output) override;
 
   void ForwardFloat(bool debug, const NetworkIO& input,
-               const TransposedArray* input_transpose, NetworkScratch* scratch,
+               const TransposedArray32* input_transpose, NetworkScratch* scratch,
                NetworkIO* output) override;
 
   // Runs backward propagation of errors on the deltas line.
@@ -57,6 +57,9 @@ class Maxpool : public Reconfig {
   bool Backward(bool debug, const NetworkIO& fwd_deltas,
                 NetworkScratch* scratch,
                 NetworkIO* back_deltas) override;
+  
+  bool BackwardFloat(bool debug, const NetworkIO& fwd_deltas,
+                NetworkScratch* scratch, NetworkIO* back_deltas) override;
 
  private:
   // Memory of which input was the max.

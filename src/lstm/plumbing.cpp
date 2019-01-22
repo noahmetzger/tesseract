@@ -28,10 +28,10 @@ Plumbing::Plumbing(const STRING& name)
 
 // Suspends/Enables training by setting the training_ flag. Serialize and
 // DeSerialize only operate on the run-time data if state is false.
-void Plumbing::SetEnableTraining(TrainingState state) {
-  Network::SetEnableTraining(state);
+void Plumbing::SetEnableTraining(TrainingState state, bool float_mode) {
+  Network::SetEnableTraining(state, float_mode);
   for (int i = 0; i < stack_.size(); ++i)
-    stack_[i]->SetEnableTraining(state);
+    stack_[i]->SetEnableTraining(state, float_mode);
 }
 
 // Sets flags that control the action of the network. See NetworkFlags enum
@@ -47,10 +47,11 @@ void Plumbing::SetNetworkFlags(uint32_t flags) {
 // Note that randomizer is a borrowed pointer that should outlive the network
 // and should not be deleted by any of the networks.
 // Returns the number of weights initialized.
-int Plumbing::InitWeights(float range, TRand* randomizer) {
+int Plumbing::InitWeights(float range, TRand* randomizer, bool float_mode) {
   num_weights_ = 0;
+  float_mode_ = float_mode;
   for (int i = 0; i < stack_.size(); ++i)
-    num_weights_ += stack_[i]->InitWeights(range, randomizer);
+    num_weights_ += stack_[i]->InitWeights(range, randomizer, float_mode);
   return num_weights_;
 }
 
@@ -60,6 +61,13 @@ int Plumbing::RemapOutputs(int old_no, const std::vector<int>& code_map) {
   num_weights_ = 0;
   for (int i = 0; i < stack_.size(); ++i) {
     num_weights_ += stack_[i]->RemapOutputs(old_no, code_map);
+  }
+  return num_weights_;
+}
+int Plumbing::RemapOutputsFloat(int old_no, const std::vector<int>& code_map) {
+  num_weights_ = 0;
+  for (int i = 0; i < stack_.size(); ++i) {
+    num_weights_ += stack_[i]->RemapOutputsFloat(old_no, code_map);
   }
   return num_weights_;
 }
@@ -193,6 +201,20 @@ bool Plumbing::Serialize(TFile* fp) const {
   return true;
 }
 
+bool Plumbing::SerializeFloat(TFile* fp) const {
+  if (!Network::SerializeFloat(fp)) return false;
+  uint32_t size = stack_.size();
+  // Can't use PointerVector::Serialize here as we need a special DeSerialize.
+  if (!fp->Serialize(&size)) return false;
+  for (uint32_t i = 0; i < size; ++i)
+    if (!stack_[i]->SerializeFloat(fp)) return false;
+  if ((network_flags_ & NF_LAYER_SPECIFIC_LR) &&
+      !learning_rates_.Serialize(fp)) {
+    return false;
+  }
+  return true;
+}
+
 // Reads from the given file. Returns false in case of error.
 bool Plumbing::DeSerialize(TFile* fp) {
   stack_.truncate(0);
@@ -224,6 +246,21 @@ void Plumbing::Update(float learning_rate, float momentum, float adam_beta,
     }
     if (stack_[i]->IsTraining()) {
       stack_[i]->Update(learning_rate, momentum, adam_beta, num_samples);
+    }
+  }
+}
+
+void Plumbing::UpdateFloat(float learning_rate, float momentum, float adam_beta,
+                      int num_samples) {
+  for (int i = 0; i < stack_.size(); ++i) {
+    if (network_flags_ & NF_LAYER_SPECIFIC_LR) {
+      if (i < learning_rates_.size())
+        learning_rate = learning_rates_[i];
+      else
+        learning_rates_.push_back(learning_rate);
+    }
+    if (stack_[i]->IsTraining()) {
+      stack_[i]->UpdateFloat(learning_rate, momentum, adam_beta, num_samples);
     }
   }
 }

@@ -217,7 +217,7 @@ bool Network::DeSerialize(TFile* fp) {
 // Reads from the given file. Returns nullptr in case of error.
 // Determines the type of the serialized class and calls its DeSerialize
 // on a new object of the appropriate type, which is returned.
-Network* Network::CreateFromFile(TFile* fp) {
+Network* Network::CreateFromFile(TFile* fp, bool float_mode) {
   Network stub;
   if (!stub.DeSerialize(fp)) return nullptr;
   Network* network = nullptr;
@@ -284,6 +284,7 @@ Network* Network::CreateFromFile(TFile* fp) {
     network->needs_to_backprop_ = stub.needs_to_backprop_;
     network->network_flags_ = stub.network_flags_;
     network->num_weights_ = stub.num_weights_;
+    network->float_mode_ = float_mode;
     if (!network->DeSerialize(fp)) {
       delete network;
       network = nullptr;

@@ -279,7 +279,7 @@ bool LSTM::DeSerialize(TFile* fp) {
   }
   delete softmax_;
   if (type_ == NT_LSTM_SOFTMAX || type_ == NT_LSTM_SOFTMAX_ENCODED) {
-    softmax_ = static_cast<FullyConnected*>(Network::CreateFromFile(fp));
+    softmax_ = static_cast<FullyConnected*>(Network::CreateFromFile(fp, float_mode_));
     if (softmax_ == nullptr) return false;
   } else {
     softmax_ = nullptr;

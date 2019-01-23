@@ -437,7 +437,11 @@ bool LSTMTrainer::TransitionTrainingStage(float error_threshold) {
 // Writes to the given file. Returns false in case of error.
 bool LSTMTrainer::Serialize(SerializeAmount serialize_amount,
                             const TessdataManager* mgr, TFile* fp) const {
-  if (!LSTMRecognizer::Serialize(mgr, fp)) return false;
+  if (!dp_float_mode_) {
+    if (!LSTMRecognizer::Serialize(mgr, fp)) return false;
+  } else {
+    if (!LSTMRecognizer::SerializeFloat(mgr, fp)) return false;
+  }
   if (!fp->Serialize(&learning_iteration_)) return false;
   if (!fp->Serialize(&prev_sample_iteration_)) return false;
   if (!fp->Serialize(&perfect_delay_)) return false;
@@ -473,7 +477,7 @@ bool LSTMTrainer::Serialize(SerializeAmount serialize_amount,
 // Reads from the given file. Returns false in case of error.
 // NOTE: It is assumed that the trainer is never read cross-endian.
 bool LSTMTrainer::DeSerialize(const TessdataManager* mgr, TFile* fp) {
-  if (!LSTMRecognizer::DeSerialize(mgr, fp)) return false;
+  if (!LSTMRecognizer::DeSerialize(mgr, fp, dp_float_mode_)) return false;
   if (!fp->DeSerialize(&learning_iteration_)) {
     // Special case. If we successfully decoded the recognizer, but fail here
     // then it means we were just given a recognizer, so issue a warning and
@@ -1138,9 +1142,15 @@ bool LSTMTrainer::ComputeTextTargets(const NetworkIO& outputs,
 bool LSTMTrainer::ComputeCTCTargets(const GenericVector<int>& truth_labels,
                                     NetworkIO* outputs, NetworkIO* targets) {
   // Bottom-clip outputs to a minimum probability.
-  CTC::NormalizeProbs(outputs);
-  return CTC::ComputeCTCTargets(truth_labels, null_char_,
-                                outputs->float_array(), targets);
+  if (!dp_float_mode_) {
+    CTC::NormalizeProbs(outputs);
+    return CTC::ComputeCTCTargets(truth_labels, null_char_,
+                                  outputs->float_array(), targets);
+  } else {
+    CTC::NormalizeProbsFloat(outputs);
+    return CTC::ComputeCTCTargetsFloat(truth_labels, null_char_,
+                                  outputs->float_array(), targets);
+  }
 }
 
 // Computes network errors, and stores the results in the rolling buffers,

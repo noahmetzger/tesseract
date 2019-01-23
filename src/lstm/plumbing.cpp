@@ -222,7 +222,7 @@ bool Plumbing::DeSerialize(TFile* fp) {
   uint32_t size;
   if (!fp->DeSerialize(&size)) return false;
   for (uint32_t i = 0; i < size; ++i) {
-    Network* network = CreateFromFile(fp);
+    Network* network = CreateFromFile(fp, float_mode_);
     if (network == nullptr) return false;
     AddToStack(network);
   }

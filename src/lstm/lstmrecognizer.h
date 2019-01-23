@@ -163,7 +163,7 @@ class LSTMRecognizer {
   // Reads from the given file. Returns false in case of error.
   // If mgr contains a unicharset and recoder, then they are taken from there,
   // otherwise, they are part of the serialization in fp.
-  bool DeSerialize(const TessdataManager* mgr, TFile* fp);
+  bool DeSerialize(const TessdataManager* mgr, TFile* fp, bool float_mode = false);
   // Loads the charsets from mgr.
   bool LoadCharsets(const TessdataManager* mgr);
   // Loads the Recoder.

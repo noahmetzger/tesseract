@@ -37,6 +37,10 @@ class CTC {
     NormalizeProbs(probs->mutable_float_array());
   }
 
+  static void NormalizeProbsFloat(NetworkIO* probs) {
+    NormalizeProbsFloat(probs->mutable_float_array());
+  }
+
   // Builds a target using CTC. Slightly improved as follows:
   // Includes normalizations and clipping for stability.
   // labels should be pre-padded with nulls wherever desired, but they don't
@@ -50,6 +54,11 @@ class CTC {
   // On return targets is filled with the computed targets.
   // Returns false if there is insufficient time for the labels.
   static bool ComputeCTCTargets(const GenericVector<int>& truth_labels,
+                                int null_char,
+                                const GENERIC_2D_ARRAY<float>& outputs,
+                                NetworkIO* targets);
+
+  static bool ComputeCTCTargetsFloat(const GenericVector<int>& truth_labels,
                                 int null_char,
                                 const GENERIC_2D_ARRAY<float>& outputs,
                                 NetworkIO* targets);
@@ -75,20 +84,26 @@ class CTC {
   float CalculateBiasFraction();
   // Runs the forward CTC pass, filling in log_probs.
   void Forward(GENERIC_2D_ARRAY<double>* log_probs) const;
+  void Forward(GENERIC_2D_ARRAY<float>* log_probs) const;
   // Runs the backward CTC pass, filling in log_probs.
   void Backward(GENERIC_2D_ARRAY<double>* log_probs) const;
+  void Backward(GENERIC_2D_ARRAY<float>* log_probs) const;
   // Normalizes and brings probs out of log space with a softmax over time.
   void NormalizeSequence(GENERIC_2D_ARRAY<double>* probs) const;
+  void NormalizeSequence(GENERIC_2D_ARRAY<float>* probs) const;
   // For each timestep computes the max prob for each class over all
   // instances of the class in the labels_, and sets the targets to
   // the max observed prob.
   void LabelsToClasses(const GENERIC_2D_ARRAY<double>& probs,
+                       NetworkIO* targets) const;
+  void LabelsToClasses(const GENERIC_2D_ARRAY<float>& probs,
                        NetworkIO* targets) const;
   // Normalizes the probabilities such that no target has a prob below min_prob,
   // and, provided that the initial total is at least min_total_prob, then all
   // probs will sum to 1, otherwise to sum/min_total_prob. The maximum output
   // probability is thus 1 - (num_classes-1)*min_prob.
   static void NormalizeProbs(GENERIC_2D_ARRAY<float>* probs);
+  static void NormalizeProbsFloat(GENERIC_2D_ARRAY<float>* probs);
   // Returns true if the label at index is a needed null.
   bool NeededNull(int index) const;
   // Returns exp(clipped(x)), clipping x to a reasonable range to prevent over/
@@ -99,14 +114,23 @@ class CTC {
     return exp(x);
   }
 
+  static float ClippedExp(float x) {
+    if (x < -kMaxExpArgFloat_) return exp(-kMaxExpArgFloat_);
+    if (x > kMaxExpArgFloat_) return exp(kMaxExpArgFloat_);
+    return exp(x);
+  }
+
   // Minimum probability limit for softmax input to ctc_loss.
   static const float kMinProb_;
   // Maximum absolute argument to exp().
   static const double kMaxExpArg_;
+  static const float kMaxExpArgFloat_;
   // Minimum probability for total prob in time normalization.
   static const double kMinTotalTimeProb_;
+  static const float kMinTotalTimeProbFloat_;
   // Minimum probability for total prob in final normalization.
   static const double kMinTotalFinalProb_;
+  static const float kMinTotalFinalProbFloat_;
 
   // The truth label indices that are to be matched to outputs_.
   const GenericVector<int>& labels_;

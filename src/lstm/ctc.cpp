@@ -36,10 +36,13 @@ namespace tesseract {
 const float CTC::kMinProb_ = 1e-12;
 // Maximum absolute argument to exp().
 const double CTC::kMaxExpArg_ = 80.0;
+const float CTC::kMaxExpArgFloat_ = 80.0f;
 // Minimum probability for total prob in time normalization.
 const double CTC::kMinTotalTimeProb_ = 1e-8;
+const float CTC::kMinTotalTimeProbFloat_ = 1e-8f;
 // Minimum probability for total prob in final normalization.
 const double CTC::kMinTotalFinalProb_ = 1e-6;
+const float CTC::kMinTotalFinalProbFloat_ = 1e-6f;
 
 // Builds a target using CTC. Slightly improved as follows:
 // Includes normalizations and clipping for stability.
@@ -78,6 +81,35 @@ bool CTC::ComputeCTCTargets(const GenericVector<int>& labels, int null_char,
   ctc->NormalizeSequence(&log_alphas);
   ctc->LabelsToClasses(log_alphas, targets);
   NormalizeProbs(targets);
+  return true;
+}
+
+bool CTC::ComputeCTCTargetsFloat(const GenericVector<int>& labels, int null_char,
+                            const GENERIC_2D_ARRAY<float>& outputs,
+                            NetworkIO* targets) {
+  std::unique_ptr<CTC> ctc(new CTC(labels, null_char, outputs));
+  if (!ctc->ComputeLabelLimits()) {
+    return false;  // Not enough time.
+  }
+  // Generate simple targets purely from the truth labels by spreading them
+  // evenly over time.
+  GENERIC_2D_ARRAY<float> simple_targets;
+  ctc->ComputeSimpleTargets(&simple_targets);
+  // Add the simple targets as a starter bias to the network outputs.
+  float bias_fraction = ctc->CalculateBiasFraction();
+  simple_targets *= bias_fraction;
+  ctc->outputs_ += simple_targets;
+  NormalizeProbs(&ctc->outputs_);
+  // Run regular CTC on the biased outputs.
+  // Run forward and backward
+  GENERIC_2D_ARRAY<float> log_alphas, log_betas;
+  ctc->Forward(&log_alphas);
+  ctc->Backward(&log_betas);
+  // Normalize and come out of log space with a clipped softmax over time.
+  log_alphas += log_betas;
+  ctc->NormalizeSequence(&log_alphas);
+  ctc->LabelsToClasses(log_alphas, targets);
+  NormalizeProbsFloat(targets);
   return true;
 }
 
@@ -268,6 +300,14 @@ static double LogSumExp(double ln_x, double ln_y) {
   }
 }
 
+static float LogSumExpFloat(float ln_x, float ln_y) {
+  if (ln_x >= ln_y) {
+    return ln_x + log1p(exp(ln_y - ln_x));
+  } else {
+    return ln_y + log1p(exp(ln_x - ln_y));
+  }
+}
+
 // Runs the forward CTC pass, filling in log_probs.
 void CTC::Forward(GENERIC_2D_ARRAY<double>* log_probs) const {
   log_probs->Resize(num_timesteps_, num_labels_, -FLT_MAX);
@@ -290,6 +330,33 @@ void CTC::Forward(GENERIC_2D_ARRAY<double>* log_probs) const {
       }
       // Add in the log prob of the current label.
       double label_prob = outputs_t[labels_[u]];
+      log_sum += log(label_prob);
+      log_probs->put(t, u, log_sum);
+    }
+  }
+}
+
+void CTC::Forward(GENERIC_2D_ARRAY<float>* log_probs) const {
+  log_probs->Resize(num_timesteps_, num_labels_, -FLT_MAX);
+  log_probs->put(0, 0, log(outputs_(0, labels_[0])));
+  if (labels_[0] == null_char_)
+    log_probs->put(0, 1, log(outputs_(0, labels_[1])));
+  for (int t = 1; t < num_timesteps_; ++t) {
+    const float* outputs_t = outputs_[t];
+    for (int u = min_labels_[t]; u <= max_labels_[t]; ++u) {
+      // Continuing the same label.
+      float log_sum = log_probs->get(t - 1, u);
+      // Change from previous label.
+      if (u > 0) {
+        log_sum = LogSumExpFloat(log_sum, log_probs->get(t - 1, u - 1));
+      }
+      // Skip the null if allowed.
+      if (u >= 2 && labels_[u - 1] == null_char_ &&
+          labels_[u] != labels_[u - 2]) {
+        log_sum = LogSumExpFloat(log_sum, log_probs->get(t - 1, u - 2));
+      }
+      // Add in the log prob of the current label.
+      float label_prob = outputs_t[labels_[u]];
       log_sum += log(label_prob);
       log_probs->put(t, u, log_sum);
     }
@@ -325,6 +392,34 @@ void CTC::Backward(GENERIC_2D_ARRAY<double>* log_probs) const {
   }
 }
 
+void CTC::Backward(GENERIC_2D_ARRAY<float>* log_probs) const {
+  log_probs->Resize(num_timesteps_, num_labels_, -FLT_MAX);
+  log_probs->put(num_timesteps_ - 1, num_labels_ - 1, 0.0);
+  if (labels_[num_labels_ - 1] == null_char_)
+    log_probs->put(num_timesteps_ - 1, num_labels_ - 2, 0.0);
+  for (int t = num_timesteps_ - 2; t >= 0; --t) {
+    const float* outputs_tp1 = outputs_[t + 1];
+    for (int u = min_labels_[t]; u <= max_labels_[t]; ++u) {
+      // Continuing the same label.
+      float log_sum = log_probs->get(t + 1, u) + log(outputs_tp1[labels_[u]]);
+      // Change from previous label.
+      if (u + 1 < num_labels_) {
+        float prev_prob = outputs_tp1[labels_[u + 1]];
+        log_sum =
+            LogSumExpFloat(log_sum, log_probs->get(t + 1, u + 1) + log(prev_prob));
+      }
+      // Skip the null if allowed.
+      if (u + 2 < num_labels_ && labels_[u + 1] == null_char_ &&
+          labels_[u] != labels_[u + 2]) {
+        float skip_prob = outputs_tp1[labels_[u + 2]];
+        log_sum =
+            LogSumExpFloat(log_sum, log_probs->get(t + 1, u + 2) + log(skip_prob));
+      }
+      log_probs->put(t, u, log_sum);
+    }
+  }
+}
+
 // Normalizes and brings probs out of log space with a softmax over time.
 void CTC::NormalizeSequence(GENERIC_2D_ARRAY<double>* probs) const {
   double max_logprob = probs->Max();
@@ -337,6 +432,29 @@ void CTC::NormalizeSequence(GENERIC_2D_ARRAY<double>* probs) const {
         prob = ClippedExp(prob - max_logprob);
       else
         prob = 0.0;
+      total += prob;
+      probs->put(t, u, prob);
+    }
+    // Note that although this is a probability distribution over time and
+    // therefore should sum to 1, it is important to allow some labels to be
+    // all zero, (or at least tiny) as it is necessary to skip some blanks.
+    if (total < kMinTotalTimeProb_) total = kMinTotalTimeProb_;
+    for (int t = 0; t < num_timesteps_; ++t)
+      probs->put(t, u, probs->get(t, u) / total);
+  }
+}
+
+void CTC::NormalizeSequence(GENERIC_2D_ARRAY<float>* probs) const {
+  float max_logprob = probs->Max();
+  for (int u = 0; u < num_labels_; ++u) {
+    float total = 0.0f;
+    for (int t = 0; t < num_timesteps_; ++t) {
+      // Separate impossible path from unlikely probs.
+      float prob = probs->get(t, u);
+      if (prob > -FLT_MAX)
+        prob = ClippedExp(prob - max_logprob);
+      else
+        prob = 0.0f;
       total += prob;
       probs->put(t, u, prob);
     }
@@ -376,6 +494,30 @@ void CTC::LabelsToClasses(const GENERIC_2D_ARRAY<double>& probs,
   }
 }
 
+void CTC::LabelsToClasses(const GENERIC_2D_ARRAY<float>& probs,
+                          NetworkIO* targets) const {
+  // For each timestep compute the max prob for each class over all
+  // instances of the class in the labels_.
+  GenericVector<float> class_probs;
+  for (int t = 0; t < num_timesteps_; ++t) {
+    float* targets_t = targets->f(t);
+    class_probs.init_to_size(num_classes_, 0.0);
+    for (int u = 0; u < num_labels_; ++u) {
+      float prob = probs(t, u);
+      // Note that although Graves specifies sum over all labels of the same
+      // class, we need to allow skipped blanks to go to zero, so they don't
+      // interfere with the non-blanks, so max is better than sum.
+      if (prob > class_probs[labels_[u]]) class_probs[labels_[u]] = prob;
+      //         class_probs[labels_[u]] += prob;
+    }
+    int best_class = 0;
+    for (int c = 0; c < num_classes_; ++c) {
+      targets_t[c] = class_probs[c];
+      if (class_probs[c] > class_probs[best_class]) best_class = c;
+    }
+  }
+}
+
 // Normalizes the probabilities such that no target has a prob below min_prob,
 // and, provided that the initial total is at least min_total_prob, then all
 // probs will sum to 1, otherwise to sum/min_total_prob. The maximum output
@@ -394,6 +536,30 @@ void CTC::NormalizeProbs(GENERIC_2D_ARRAY<float>* probs) {
     double increment = 0.0;
     for (int c = 0; c < num_classes; ++c) {
       double prob = probs_t[c] / total;
+      if (prob < kMinProb_) increment += kMinProb_ - prob;
+    }
+    // Now normalize with clipping. Any additional clipping is negligible.
+    total += increment;
+    for (int c = 0; c < num_classes; ++c) {
+      float prob = probs_t[c] / total;
+      probs_t[c] = std::max(prob, kMinProb_);
+    }
+  }
+}
+
+void CTC::NormalizeProbsFloat(GENERIC_2D_ARRAY<float>* probs) {
+  int num_timesteps = probs->dim1();
+  int num_classes = probs->dim2();
+  for (int t = 0; t < num_timesteps; ++t) {
+    float* probs_t = (*probs)[t];
+    // Compute the total and clip that to prevent amplification of noise.
+    float total = 0.0;
+    for (int c = 0; c < num_classes; ++c) total += probs_t[c];
+    if (total < kMinTotalFinalProbFloat_) total = kMinTotalFinalProbFloat_;
+    // Compute the increased total as a result of clipping.
+    float increment = 0.0;
+    for (int c = 0; c < num_classes; ++c) {
+      float prob = probs_t[c] / total;
       if (prob < kMinProb_) increment += kMinProb_ - prob;
     }
     // Now normalize with clipping. Any additional clipping is negligible.

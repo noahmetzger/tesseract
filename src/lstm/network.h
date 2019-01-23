@@ -246,7 +246,7 @@ class Network {
   // Reads from the given file. Returns nullptr in case of error.
   // Determines the type of the serialized class and calls its DeSerialize
   // on a new object of the appropriate type, which is returned.
-  static Network* CreateFromFile(TFile* fp);
+  static Network* CreateFromFile(TFile* fp, bool float_mode);
 
   // Runs forward propagation of activations on the input line.
   // Note that input and output are both 2-d arrays.

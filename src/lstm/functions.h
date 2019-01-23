@@ -124,6 +124,7 @@ struct FFunc {
 };
 struct FPrime {
   inline double operator()(double y) const { return y * (1.0 - y); }
+  inline float operator()(float y) const { return y * (1.0f - y); }
 };
 struct ClipFFunc {
   inline double operator()(double x) const {
@@ -152,6 +153,7 @@ struct GFunc {
 };
 struct GPrime {
   inline double operator()(double y) const { return 1.0 - y * y; }
+  inline float operator()(float y) const { return 1.0f - y * y; }
 };
 struct ClipGFunc {
   inline double operator()(double x) const {
@@ -173,6 +175,10 @@ struct HPrime {
   inline double operator()(double y) const {
     double u = Tanh(y);
     return 1.0 - u * u;
+  }
+  inline float operator()(float y) const {
+    float u = Tanh(y);
+    return 1.0f - u * u;
   }
 };
 struct UnityFunc {

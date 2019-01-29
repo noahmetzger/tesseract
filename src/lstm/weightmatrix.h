@@ -161,7 +161,6 @@ class WeightMatrix {
   void MatrixDotVector(const double* u, double* v) const;
   void MatrixDotVector(const int8_t* u, double* v) const;
   void MatrixDotVector(const float* u, float* v) const;
-  void MatrixDotVector(const int8_t* u, float* v) const;
   // MatrixDotVector for peep weights, MultiplyAccumulate adds the
   // component-wise products of *this[0] and v to inout.
   void MultiplyAccumulate(const double* v, double* inout);
@@ -234,6 +233,7 @@ class WeightMatrix {
   // If we are using wi_, then scales_ is a factor to restore the row product
   // with a vector to the correct range.
   GenericVector<double> scales_;
+  GenericVector<float> scales32_;
   // Weight deltas. dw_ is the new delta, and updates_ the momentum-decaying
   // amount to be added to wf_/wi_.
   GENERIC_2D_ARRAY<double> dw_;
@@ -243,6 +243,7 @@ class WeightMatrix {
   // Iff use_adam_, the sum of squares of dw_. The number of samples is
   // given to Update(). Serialized iff use_adam_.
   GENERIC_2D_ARRAY<double> dw_sq_sum_;
+  GENERIC_2D_ARRAY<float> dw_sq_sum32_;
   // The weights matrix reorganized in whatever way suits this instance.
   std::vector<int8_t> shaped_w_;
 };

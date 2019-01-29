@@ -70,13 +70,20 @@ static double DotProductGeneric(const double* u, const double* v, int n) {
   return total;
 }
 
-static void SetDotProduct(DotProductFunction f, const IntSimdMatrix* m = nullptr) {
+static float DotProductFloatGeneric(const float* u, const float* v, int n) {
+  float total = 0.0f;
+  for (int k = 0; k < n; ++k) total += u[k] * v[k];
+  return total;
+}
+
+static void SetDotProduct(DotProductFunction f,
+                          const IntSimdMatrix* m = nullptr) {
   DotProduct = f;
   IntSimdMatrix::intSimdMatrix = m;
 }
 
-static void SetDotProductFloat(DotProductFloatFunction function) {
-  DotProductFloat = function;
+static void SetDotProductFloat(DotProductFloatFunction f) {
+  DotProductFloat = f;
 }
 
 // Constructor.
@@ -135,19 +142,21 @@ SIMDDetect::SIMDDetect() {
   } else if (avx2_available_) {
     // AVX2 detected.
     SetDotProduct(DotProductAVX, &IntSimdMatrix::intSimdMatrixAVX2);
+    SetDotProductFloat(DotProductFloatAVX);
 #endif
 #if defined(AVX)
   } else if (avx_available_) {
     // AVX detected.
     SetDotProduct(DotProductAVX, &IntSimdMatrix::intSimdMatrixSSE);
+    SetDotProductFloat(DotProductFloatAVX);
 #endif
 #if defined(SSE4_1)
-    SetDotProductFloat(DotProductFloatAVX);
   } else if (sse_available_) {
     // SSE detected.
     SetDotProduct(DotProductSSE, &IntSimdMatrix::intSimdMatrixSSE);
-#endif
     SetDotProductFloat(DotProductFloatSSE);
+#endif
+    
   }
 }
 
@@ -171,6 +180,7 @@ void SIMDDetect::Update() {
   } else if (!strcmp(dotproduct.string(), "avx2")) {
     // AVX2 selected by config variable.
     SetDotProduct(DotProductAVX, &IntSimdMatrix::intSimdMatrixAVX2);
+    SetDotProductFloat(DotProductFloatAVX);
     dotproduct_method = "avx2";
 #endif
 #if defined(AVX)

@@ -341,8 +341,12 @@ void FullyConnected::ForwardTimeStep(const int8_t* i_input,
 void FullyConnected::ForwardTimeStep(const int8_t* i_input, int t,
                                      float* output_line) {
   // input is copied to source_ line-by-line for cache coherency.
+  /*
+  int mode with float values is currently not working
   weights_.MatrixDotVector(i_input, output_line);
   ForwardTimeStep(t, output_line);
+  */
+  
 }
 
 // Runs backward propagation of errors on the deltas line.

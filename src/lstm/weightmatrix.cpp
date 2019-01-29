@@ -248,7 +248,7 @@ bool WeightMatrix::SerializeFloat(bool training, TFile* fp) const {
   if (!fp->Serialize(&mode)) return false;
   if (int_mode_) {
     if (!wi_.Serialize(fp)) return false;
-    if (!scales_.Serialize(fp)) return false;
+    if (!scales32_.Serialize(fp)) return false;
   } else {
     if (!wf32_.Serialize(fp)) return false;
     if (training && !updates32_.Serialize(fp)) return false;
@@ -291,9 +291,10 @@ bool WeightMatrix::DeSerializeFloat(bool training, TFile* fp) {
   if ((mode & kDoubleFlag) == 0) return DeSerializeOld(training, fp);
   if (int_mode_) {
     if (!wi_.DeSerialize(fp)) return false;
-    if (!scales_.DeSerialize(fp)) return false;
-    multiplier_.reset(IntSimdMatrix::GetFastestMultiplier());
-    multiplier_->Init(wi_);
+    if (!scales32_.DeSerialize(fp)) return false;
+    if (IntSimdMatrix::intSimdMatrix) {
+      IntSimdMatrix::intSimdMatrix->Init(wi_, shaped_w_);
+    }
   } else {
     if (!wf32_.DeSerialize(fp)) return false;
     if (training) {
@@ -352,12 +353,6 @@ void WeightMatrix::MatrixDotVector(const int8_t* u, double* v) const {
   } else {
     IntSimdMatrix::MatrixDotVector(wi_, scales_, u, v);
   }
-}
-
-void WeightMatrix::MatrixDotVector(const int8_t* u, float* v) const {
-  ASSERT_HOST(int_mode_);
-  ASSERT_HOST(multiplier_ != nullptr);
-  multiplier_->MatrixDotVector(wi_, scales_, u, v);
 }
 
 // MatrixDotVector for peep weights, MultiplyAccumulate adds the

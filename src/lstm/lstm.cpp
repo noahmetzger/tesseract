@@ -481,8 +481,6 @@ void LSTM::ForwardFloat(bool debug, const NetworkIO& input,
     softmax_output.Init(no_, scratch);
     ZeroVector<float>(no_, softmax_output);
     int rounded_softmax_inputs = gate_weights_[CI].RoundInputs(ns_);
-    if (input.int_mode())
-      int_output.Resize2d(true, 1, rounded_softmax_inputs, scratch);
     softmax_->SetupForward(input, nullptr);
   }
   NetworkScratch::Float32Vec curr_input;
@@ -515,43 +513,29 @@ void LSTM::ForwardFloat(bool debug, const NetworkIO& input,
     // alternative of putting the parallel outside the t loop, a single around
     // the t-loop and then tasks in place of the sections is a *lot* slower.
     // Cell inputs.
-    if (source_.int_mode())
-      gate_weights_[CI].MatrixDotVector(source_.i(t), temp_lines[CI]);
-    else
-      gate_weights_[CI].MatrixDotVector(curr_input, temp_lines[CI]);
+
+    gate_weights_[CI].MatrixDotVector(curr_input, temp_lines[CI]);
     FuncInplace<GFunc>(ns_, temp_lines[CI]);
 
     SECTION_IF_OPENMP
     // Input Gates.
-    if (source_.int_mode())
-      gate_weights_[GI].MatrixDotVector(source_.i(t), temp_lines[GI]);
-    else
-      gate_weights_[GI].MatrixDotVector(curr_input, temp_lines[GI]);
+    gate_weights_[GI].MatrixDotVector(curr_input, temp_lines[GI]);
     FuncInplace<FFunc>(ns_, temp_lines[GI]);
 
     SECTION_IF_OPENMP
     // 1-D forget gates.
-    if (source_.int_mode())
-      gate_weights_[GF1].MatrixDotVector(source_.i(t), temp_lines[GF1]);
-    else
-      gate_weights_[GF1].MatrixDotVector(curr_input, temp_lines[GF1]);
+    gate_weights_[GF1].MatrixDotVector(curr_input, temp_lines[GF1]);
     FuncInplace<FFunc>(ns_, temp_lines[GF1]);
 
     // 2-D forget gates.
     if (Is2D()) {
-      if (source_.int_mode())
-        gate_weights_[GFS].MatrixDotVector(source_.i(t), temp_lines[GFS]);
-      else
-        gate_weights_[GFS].MatrixDotVector(curr_input, temp_lines[GFS]);
+      gate_weights_[GFS].MatrixDotVector(curr_input, temp_lines[GFS]);
       FuncInplace<FFunc>(ns_, temp_lines[GFS]);
     }
 
     SECTION_IF_OPENMP
     // Output gates.
-    if (source_.int_mode())
-      gate_weights_[GO].MatrixDotVector(source_.i(t), temp_lines[GO]);
-    else
-      gate_weights_[GO].MatrixDotVector(curr_input, temp_lines[GO]);
+    gate_weights_[GO].MatrixDotVector(curr_input, temp_lines[GO]);
     FuncInplace<FFunc>(ns_, temp_lines[GO]);
     END_PARALLEL_IF_OPENMP
 
@@ -585,12 +569,7 @@ void LSTM::ForwardFloat(bool debug, const NetworkIO& input,
     FuncMultiply<HFunc>(curr_state, temp_lines[GO], ns_, curr_output);
     if (IsTraining()) state_.WriteTimeStep(t, curr_state);
     if (softmax_ != nullptr) {
-      if (input.int_mode()) {
-        int_output->WriteTimeStepPart(0, 0, ns_, curr_output);
-        softmax_->ForwardTimeStep(int_output->i(0), t, softmax_output);
-      } else {
-        softmax_->ForwardTimeStep(curr_output, t, softmax_output);
-      }
+      softmax_->ForwardTimeStep(curr_output, t, softmax_output);
       output->WriteTimeStep(t, softmax_output);
       if (type_ == NT_LSTM_SOFTMAX_ENCODED) {
         CodeInBinary(no_, nf_, softmax_output);

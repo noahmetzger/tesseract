@@ -261,12 +261,6 @@ void WeightMatrix::MatrixDotVector(const int8_t* u, double* v) const {
   }
 }
 
-void WeightMatrix::MatrixDotVector(const int8_t* u, float* v) const {
-  ASSERT_HOST(int_mode_);
-  ASSERT_HOST(multiplier_ != nullptr);
-  multiplier_->MatrixDotVector(wi_, scales_, u, v);
-}
-
 // MatrixDotVector for peep weights, MultiplyAccumulate adds the
 // component-wise products of *this[0] and v to inout.
 void WeightMatrix::MultiplyAccumulate(const double* v, double* inout) {

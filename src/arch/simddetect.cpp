@@ -70,6 +70,12 @@ static double DotProductGeneric(const double* u, const double* v, int n) {
   return total;
 }
 
+static float DotProductFloatGeneric(const float* u, const float* v, int n) {
+  double total = 0.0;
+  for (int k = 0; k < n; ++k) total += u[k] * v[k];
+  return total;
+}
+
 static void SetDotProduct(DotProductFunction f, const IntSimdMatrix* m = nullptr) {
   DotProduct = f;
   IntSimdMatrix::intSimdMatrix = m;

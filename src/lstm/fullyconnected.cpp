@@ -197,12 +197,8 @@ void FullyConnected::ForwardFloat(bool debug, const NetworkIO& input,
     int thread_id = 0;
 #endif
     float* temp_line = temp_lines[thread_id];
-    if (input.int_mode()) {
-      ForwardTimeStep(input.i(t), t, temp_line);
-    } else {
-      input.ReadTimeStep(t, curr_input[thread_id]);
-      ForwardTimeStep(curr_input[thread_id], t, temp_line);
-    }
+    input.ReadTimeStep(t, curr_input[thread_id]);
+    ForwardTimeStep(curr_input[thread_id], t, temp_line);
     output->WriteTimeStep(t, temp_line);
     if (IsTraining() && type_ != NT_SOFTMAX) {
       acts_.CopyTimeStepFrom(t, *output, t);
@@ -291,13 +287,6 @@ void FullyConnected::ForwardTimeStep(const float* d_input, int t,
 
 void FullyConnected::ForwardTimeStep(const int8_t* i_input,
                                      int t, double* output_line) {
-  // input is copied to source_ line-by-line for cache coherency.
-  weights_.MatrixDotVector(i_input, output_line);
-  ForwardTimeStep(t, output_line);
-}
-
-void FullyConnected::ForwardTimeStep(const int8_t* i_input, int t,
-                                     float* output_line) {
   // input is copied to source_ line-by-line for cache coherency.
   weights_.MatrixDotVector(i_input, output_line);
   ForwardTimeStep(t, output_line);

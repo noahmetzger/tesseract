@@ -151,6 +151,7 @@ SIMDDetect::SIMDDetect() {
   } else if (avx2_available_) {
     // AVX2 detected.
     SetDotProduct(DotProductAVX, &IntSimdMatrix::intSimdMatrixAVX2);
+    SetDotProductFloat(DotProductFloatAVX);
 #endif
 #if defined(AVX)
   } else if (avx_available_) {

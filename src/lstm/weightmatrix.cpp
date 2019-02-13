@@ -420,15 +420,15 @@ void WeightMatrix::FloatToDouble(const GENERIC_2D_ARRAY<float>& wf,
 
 // Utility function converts an array of double to the corresponding array
 // of float.
-void WeightMatrix::DoubleToFloat(GENERIC_2D_ARRAY<double>& wf,
-                                 GENERIC_2D_ARRAY<float>* wd) {
-  int dim1 = wf.dim1();
-  int dim2 = wf.dim2();
-  wd->ResizeNoInit(dim1, dim2);
+void WeightMatrix::DoubleToFloat(const GENERIC_2D_ARRAY<double>& wd,
+                                 GENERIC_2D_ARRAY<float>* wf) {
+  int dim1 = wd.dim1();
+  int dim2 = wd.dim2();
+  wf->ResizeNoInit(dim1, dim2);
   for (int i = 0; i < dim1; ++i) {
-    double* wfi = wf[i];
-    float* wdi = (*wd)[i];
-    for (int j = 0; j < dim2; ++j) wdi[j] = static_cast<float>(wfi[j]);
+    const double* wdi = wd[i];
+    float* wfi = (*wf)[i];
+    for (int j = 0; j < dim2; ++j) wfi[j] = static_cast<float>(wdi[j]);
   }
 }
 

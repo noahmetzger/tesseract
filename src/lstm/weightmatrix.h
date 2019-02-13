@@ -156,7 +156,7 @@ class WeightMatrix {
   static void FloatToDouble(const GENERIC_2D_ARRAY<float>& wf,
                             GENERIC_2D_ARRAY<double>* wd);
 
-  static void DoubleToFloat(GENERIC_2D_ARRAY<double>& wf,
+  static void DoubleToFloat(const GENERIC_2D_ARRAY<double>& wf,
                             GENERIC_2D_ARRAY<float>* wd);
 
  private:
